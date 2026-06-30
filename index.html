@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dating Reveal Game</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
@@ -302,6 +303,20 @@
 </div>
 
 <script>
+// FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyAVKSm0e_Q4DhKpVKrQxLvW8VJYZPJp8LQ",
+  authDomain: "dating-reveal-game-c3ede.firebaseapp.com",
+  databaseURL: "https://dating-reveal-game-c3ede-default-rtdb.firebaseio.com",
+  projectId: "dating-reveal-game-c3ede",
+  storageBucket: "dating-reveal-game-c3ede.appspot.com",
+  messagingSenderId: "841169687316",
+  appId: "1:841169687316:web:9c2e2f5e7d3c8b4a2f1e2d3c"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
 // UTILITY FUNCTIONS
 function generateGameCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -324,6 +339,13 @@ function showTab(e, name) {
   document.getElementById(name).classList.add('active');
   e.target.classList.add('active');
 }
+
+// GAME STATE
+let currentGameId = null;
+let currentGameCode = null;
+let currentPlayerName = null;
+let gameListener = null;
+let entriesListener = null;
 
 // NAVIGATION
 function goToWelcome() {
@@ -353,21 +375,24 @@ function createGame() {
   }
 
   const gameCode = generateGameCode();
-  const gameId = 'game_' + gameCode;
-
-  localStorage.setItem(gameId + '_title', gameTitle);
-  localStorage.setItem(gameId + '_creator', creatorName);
-  localStorage.setItem(gameId + '_participants', JSON.stringify([creatorName]));
-  localStorage.setItem(gameId + '_entries', JSON.stringify([]));
-
-  localStorage.setItem('currentGameId', gameId);
-  localStorage.setItem('currentGameCode', gameCode);
-  localStorage.setItem('currentPlayer', creatorName);
-
-  document.getElementById('displayCode').textContent = gameCode;
-  document.getElementById('codeGameTitle').textContent = gameTitle;
-  document.getElementById('codeGameCode').textContent = gameCode;
-  showScreen('gameCodeScreen');
+  
+  db.ref(`games/${gameCode}`).set({
+    code: gameCode,
+    title: gameTitle,
+    creator: creatorName,
+    participants: { [creatorName]: true },
+    entries: {},
+    createdAt: new Date().toISOString()
+  }).then(() => {
+    currentGameCode = gameCode;
+    currentGameId = gameCode;
+    currentPlayerName = creatorName;
+    
+    document.getElementById('displayCode').textContent = gameCode;
+    document.getElementById('codeGameTitle').textContent = gameTitle;
+    document.getElementById('codeGameCode').textContent = gameCode;
+    showScreen('gameCodeScreen');
+  }).catch(err => alert('Error creating game: ' + err.message));
 }
 
 function joinGame() {
@@ -379,26 +404,24 @@ function joinGame() {
     return;
   }
 
-  const gameId = 'game_' + gameCode;
-  const gameTitle = localStorage.getItem(gameId + '_title');
+  db.ref(`games/${gameCode}`).once('value', (snapshot) => {
+    if (!snapshot.exists()) {
+      alert('Game not found. Check the code and try again.');
+      return;
+    }
 
-  if (!gameTitle) {
-    alert('Game not found. Check the code and try again.');
-    return;
-  }
-
-  let participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
-  if (!participants.includes(playerName)) {
-    participants.push(playerName);
-    localStorage.setItem(gameId + '_participants', JSON.stringify(participants));
-  }
-
-  localStorage.setItem('currentGameId', gameId);
-  localStorage.setItem('currentGameCode', gameCode);
-  localStorage.setItem('currentPlayer', playerName);
-
-  loadLobbyScreen();
-  showScreen('lobbyScreen');
+    const game = snapshot.val();
+    
+    // Add player to participants
+    db.ref(`games/${gameCode}/participants/${playerName}`).set(true).then(() => {
+      currentGameCode = gameCode;
+      currentGameId = gameCode;
+      currentPlayerName = playerName;
+      
+      loadLobbyScreen();
+      showScreen('lobbyScreen');
+    }).catch(err => alert('Error joining game: ' + err.message));
+  });
 }
 
 function startGameAfterCreate() {
@@ -408,9 +431,11 @@ function startGameAfterCreate() {
 
 function exitGame() {
   if (confirm('Exit game?')) {
-    localStorage.removeItem('currentGameId');
-    localStorage.removeItem('currentGameCode');
-    localStorage.removeItem('currentPlayer');
+    if (gameListener) gameListener();
+    if (entriesListener) entriesListener();
+    currentGameId = null;
+    currentGameCode = null;
+    currentPlayerName = null;
     goToWelcome();
   }
 }
@@ -426,49 +451,60 @@ function copyGameCode() {
 
 // LOBBY FUNCTIONS
 function loadLobbyScreen() {
-  const gameId = localStorage.getItem('currentGameId');
-  const gameCode = localStorage.getItem('currentGameCode');
-  const playerName = localStorage.getItem('currentPlayer');
-  const gameTitle = localStorage.getItem(gameId + '_title');
-  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
+  if (gameListener) gameListener();
+  if (entriesListener) entriesListener();
 
-  document.getElementById('lobbyGameTitle').textContent = gameTitle;
-  document.getElementById('lobbyGameCode').textContent = gameCode;
-  document.getElementById('lobbyPlayerName').textContent = playerName;
+  db.ref(`games/${currentGameCode}`).once('value', (snapshot) => {
+    const game = snapshot.val();
+    document.getElementById('lobbyGameTitle').textContent = game.title;
+    document.getElementById('lobbyGameCode').textContent = currentGameCode;
+    document.getElementById('lobbyPlayerName').textContent = currentPlayerName;
+  });
 
-  updateParticipantsList();
-  updateMySubmissions();
-  updateAllGrid();
-  updateStartButton();
+  // Real-time listeners
+  gameListener = db.ref(`games/${currentGameCode}`).on('value', () => {
+    updateParticipantsList();
+    updateStartButton();
+  });
+
+  entriesListener = db.ref(`games/${currentGameCode}/entries`).on('value', () => {
+    updateMySubmissions();
+    updateAllGrid();
+    updateStartButton();
+  });
 }
 
 function updateParticipantsList() {
-  const gameId = localStorage.getItem('currentGameId');
-  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
-  const container = document.getElementById('participantsList');
+  db.ref(`games/${currentGameCode}/participants`).once('value', (snapshot) => {
+    const participants = snapshot.val() || {};
+    const names = Object.keys(participants);
+    const container = document.getElementById('participantsList');
 
-  container.innerHTML = participants.map(p => `
-    <div class="participant joined">
-      <span>${p}</span>
-      <span class="participant-status">✓ Joined</span>
-    </div>
-  `).join('');
+    container.innerHTML = names.map(p => `
+      <div class="participant joined">
+        <span>${p}</span>
+        <span class="participant-status">✓ Joined</span>
+      </div>
+    `).join('');
+  });
 }
 
 function updateStartButton() {
-  const gameId = localStorage.getItem('currentGameId');
-  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
-  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
-  const startBtn = document.getElementById('startGameBtn');
-  const hint = document.getElementById('gameHint');
+  db.ref(`games/${currentGameCode}`).once('value', (snapshot) => {
+    const game = snapshot.val();
+    const entries = Object.keys(game.entries || {}).length;
+    const participants = Object.keys(game.participants || {}).length;
+    const startBtn = document.getElementById('startGameBtn');
+    const hint = document.getElementById('gameHint');
 
-  if (entries.length > 0 && participants.length > 0) {
-    startBtn.disabled = false;
-    hint.textContent = `Ready! ${entries.length} photo${entries.length > 1 ? 's' : ''} from ${participants.length} player${participants.length > 1 ? 's' : ''}`;
-  } else {
-    startBtn.disabled = true;
-    hint.textContent = 'Waiting for participants to submit photos...';
-  }
+    if (entries > 0 && participants > 0) {
+      startBtn.disabled = false;
+      hint.textContent = `Ready! ${entries} photo${entries > 1 ? 's' : ''} from ${participants} player${participants > 1 ? 's' : ''}`;
+    } else {
+      startBtn.disabled = true;
+      hint.textContent = 'Waiting for participants to submit photos...';
+    }
+  });
 }
 
 // PHOTO SUBMISSION
@@ -533,94 +569,88 @@ function submitPhotos() {
     return;
   }
 
-  const gameId = localStorage.getItem('currentGameId');
-  const playerName = localStorage.getItem('currentPlayer');
-  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
+  const updates = {};
+  let photoCount = 0;
 
   selected.forEach((item) => {
     const fullName = item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim();
-    entries.push({
-      id: Date.now() + Math.random(),
-      submittedBy: playerName,
+    const entryId = Date.now() + Math.random();
+    
+    updates[`games/${currentGameCode}/entries/${entryId}`] = {
+      id: entryId,
+      submittedBy: currentPlayerName,
       firstName: item.dataset.firstName.trim(),
       lastName: item.dataset.lastName.trim(),
       fullName: fullName,
-      photo: item.dataset.data
-    });
+      photo: item.dataset.data,
+      timestamp: new Date().toISOString()
+    };
+    photoCount++;
   });
 
-  localStorage.setItem(gameId + '_entries', JSON.stringify(entries));
-
-  document.getElementById('photoInput').value = '';
-  document.getElementById('photoGrid').innerHTML = '';
-  updatePhotoCounter();
-  document.getElementById('successMsg').classList.add('show');
-  setTimeout(() => {
-    document.getElementById('successMsg').classList.remove('show');
-  }, 3000);
-
-  updateMySubmissions();
-  updateAllGrid();
-  updateStartButton();
+  db.ref().update(updates).then(() => {
+    document.getElementById('photoInput').value = '';
+    document.getElementById('photoGrid').innerHTML = '';
+    updatePhotoCounter();
+    document.getElementById('successMsg').classList.add('show');
+    setTimeout(() => {
+      document.getElementById('successMsg').classList.remove('show');
+    }, 3000);
+  }).catch(err => alert('Error submitting photos: ' + err.message));
 }
 
 function updateMySubmissions() {
-  const gameId = localStorage.getItem('currentGameId');
-  const playerName = localStorage.getItem('currentPlayer');
-  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
-  const myEntries = entries.filter(e => e.submittedBy === playerName);
-  const container = document.getElementById('mySubmissions');
+  db.ref(`games/${currentGameCode}/entries`).once('value', (snapshot) => {
+    const allEntries = snapshot.val() || {};
+    const myEntries = Object.values(allEntries).filter(e => e.submittedBy === currentPlayerName);
+    const container = document.getElementById('mySubmissions');
 
-  if (myEntries.length === 0) {
-    container.innerHTML = '<div class="empty">No submissions yet</div>';
-    return;
-  }
+    if (myEntries.length === 0) {
+      container.innerHTML = '<div class="empty">No submissions yet</div>';
+      return;
+    }
 
-  container.innerHTML = myEntries.map(e => `
-    <div class="entry-card">
-      <div class="entry-card-content">
-        <div class="entry-card-img"><img src="${e.photo}" alt="Photo"></div>
-        <div class="entry-card-name">${e.fullName}</div>
-        <div class="entry-card-actions">
-          <button class="btn-danger" onclick="deleteEntry('${e.id}')">Delete</button>
+    container.innerHTML = myEntries.map(e => `
+      <div class="entry-card">
+        <div class="entry-card-content">
+          <div class="entry-card-img"><img src="${e.photo}" alt="Photo"></div>
+          <div class="entry-card-name">${e.fullName}</div>
+          <div class="entry-card-actions">
+            <button class="btn-danger" onclick="deleteEntry('${e.id}')">Delete</button>
+          </div>
         </div>
       </div>
-    </div>
-  `).join('');
+    `).join('');
+  });
 }
 
 function deleteEntry(id) {
   if (!confirm('Delete this photo?')) return;
   
-  const gameId = localStorage.getItem('currentGameId');
-  let entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
-  entries = entries.filter(e => e.id != id);
-  localStorage.setItem(gameId + '_entries', JSON.stringify(entries));
-
-  updateMySubmissions();
-  updateAllGrid();
-  updateStartButton();
+  db.ref(`games/${currentGameCode}/entries/${id}`).remove()
+    .catch(err => alert('Error deleting entry: ' + err.message));
 }
 
 function updateAllGrid() {
-  const gameId = localStorage.getItem('currentGameId');
-  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
-  const grid = document.getElementById('grid');
+  db.ref(`games/${currentGameCode}/entries`).once('value', (snapshot) => {
+    const entries = Object.values(snapshot.val() || {});
+    const grid = document.getElementById('grid');
 
-  if (entries.length === 0) {
-    grid.innerHTML = '<div class="empty" style="grid-column: 1/-1;">No entries yet</div>';
-    return;
-  }
+    if (entries.length === 0) {
+      grid.innerHTML = '<div class="empty" style="grid-column: 1/-1;">No entries yet</div>';
+      return;
+    }
 
-  grid.innerHTML = entries.map(e => `
-    <div class="grid-card">
-      <div class="grid-card-img"><img src="${e.photo}" alt="Photo"></div>
-      <div class="grid-card-info">
-        <div class="grid-card-person">${e.fullName}</div>
-        <div class="grid-card-by">by ${e.submittedBy}</div>
+    grid.innerHTML = entries.map(e => `
+      <div class="grid-card">
+        <div class="grid-card-img"><img src="${e.photo}" alt="Photo"></div>
+        <div class="grid-card-info">
+          <div class="grid-card-person">${e.fullName}</div>
+          <div class="grid-card-by">by ${e.submittedBy}</div>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `).join('');
+  });
 }
 
 // MODAL FUNCTIONS
@@ -657,7 +687,6 @@ function closeNameModal() {
   currentPhotoForName = null;
 }
 
-// Close modal when clicking outside
 document.addEventListener('click', (e) => {
   const modal = document.getElementById('nameModal');
   if (e.target === modal) {
@@ -665,7 +694,6 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Allow Enter key to confirm
 document.addEventListener('keypress', (e) => {
   if (e.key === 'Enter' && document.getElementById('nameModal').classList.contains('show')) {
     confirmNameInput();
@@ -677,28 +705,27 @@ let currentPhotoIndex = 0;
 let gamePhotos = [];
 
 function startGame() {
-  const gameId = localStorage.getItem('currentGameId');
-  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
-  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
-  const gameTitle = localStorage.getItem(gameId + '_title');
+  db.ref(`games/${currentGameCode}/entries`).once('value', (snapshot) => {
+    const entries = Object.values(snapshot.val() || {});
 
-  if (entries.length === 0) {
-    alert('No photos submitted yet');
-    return;
-  }
+    if (entries.length === 0) {
+      alert('No photos submitted yet');
+      return;
+    }
 
-  // Shuffle entries
-  gamePhotos = [...entries].sort(() => Math.random() - 0.5);
-  currentPhotoIndex = 0;
+    gamePhotos = entries.sort(() => Math.random() - 0.5);
+    currentPhotoIndex = 0;
 
-  document.getElementById('playGameTitle').textContent = gameTitle;
+    db.ref(`games/${currentGameCode}`).once('value', (snap) => {
+      document.getElementById('playGameTitle').textContent = snap.val().title;
+    });
 
-  // Load first photo
-  loadPhotoRound(participants);
-  showScreen('gamePlayScreen');
+    loadPhotoRound();
+    showScreen('gamePlayScreen');
+  });
 }
 
-function loadPhotoRound(participants) {
+function loadPhotoRound() {
   if (currentPhotoIndex >= gamePhotos.length) {
     endGame();
     return;
@@ -712,11 +739,13 @@ function loadPhotoRound(participants) {
   document.getElementById('guessBtn').style.display = 'block';
   document.getElementById('nextBtn').style.display = 'none';
 
-  // Create guess buttons
-  const guessContainer = document.getElementById('guessButtons');
-  guessContainer.innerHTML = participants.map(p => `
-    <button class="guess-btn" onclick="selectGuess('${p}')" data-name="${p}">${p}</button>
-  `).join('');
+  db.ref(`games/${currentGameCode}/participants`).once('value', (snapshot) => {
+    const participants = Object.keys(snapshot.val() || {});
+    const guessContainer = document.getElementById('guessButtons');
+    guessContainer.innerHTML = participants.map(p => `
+      <button class="guess-btn" onclick="selectGuess('${p}')" data-name="${p}">${p}</button>
+    `).join('');
+  });
 }
 
 function selectGuess(name) {
@@ -726,13 +755,8 @@ function selectGuess(name) {
 
 function revealAnswer() {
   const photo = gamePhotos[currentPhotoIndex];
-  const gameId = localStorage.getItem('currentGameId');
   
-  // Find all entries with the exact same full name
-  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
-  const allEntriesOfThisPerson = entries.filter(e => e.fullName === photo.fullName);
-  
-  // Get unique submitters who submitted photos of this person
+  const allEntriesOfThisPerson = gamePhotos.filter(e => e.fullName === photo.fullName);
   const submitters = [...new Set(allEntriesOfThisPerson.map(e => e.submittedBy))];
 
   const revealSection = document.getElementById('revealedSection');
@@ -747,27 +771,19 @@ function revealAnswer() {
 }
 
 function nextPhoto() {
-  const gameId = localStorage.getItem('currentGameId');
-  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
-  
   currentPhotoIndex++;
-  loadPhotoRound(participants);
+  loadPhotoRound();
 }
 
 function endGame() {
   if (confirm('End game?')) {
-    localStorage.removeItem('currentGameId');
-    localStorage.removeItem('currentGameCode');
-    localStorage.removeItem('currentPlayer');
+    if (gameListener) gameListener();
+    if (entriesListener) entriesListener();
+    currentGameId = null;
+    currentGameCode = null;
+    currentPlayerName = null;
     goToWelcome();
   }
-}
-
-// AUTO-LOAD EXISTING GAME
-const gameId = localStorage.getItem('currentGameId');
-if (gameId) {
-  loadLobbyScreen();
-  showScreen('lobbyScreen');
 }
 
 // Override photo grid click to open name modal
