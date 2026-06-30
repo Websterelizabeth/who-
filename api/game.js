@@ -1,29 +1,24 @@
 // api/game.js — Vercel Serverless Function for shared game state
 //
-// Games are persisted in Firebase Realtime Database so players on different
-// devices can join using the same shared code/link.
+// Games are stored in this module's memory. The state persists as long as the
+// Vercel function instance stays warm (typically 15+ minutes), which is more
+// than enough for a party game session.
+//
+// For guaranteed persistence across cold starts, replace the Map with
+// Vercel KV (https://vercel.com/docs/storage/vercel-kv) — the API shape
+// of this file stays the same; just swap Map reads/writes for KV calls.
 
 'use strict';
 
-const FIREBASE_DATABASE_URL = (process.env.FIREBASE_DATABASE_URL || 'https://connections-947aa-default-rtdb.europe-west1.firebasedatabase.app').replace(/\/+$/, '');
+const games = new Map();
+const GAME_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-function gamePath(code) {
-  return `${FIREBASE_DATABASE_URL}/games/${encodeURIComponent(code)}.json`;
-}
-
-async function dbGetGame(code) {
-  const res = await fetch(gamePath(code));
-  if (!res.ok) throw new Error(`DB read failed (${res.status})`);
-  return res.json();
-}
-
-async function dbSetGame(code, game) {
-  const res = await fetch(gamePath(code), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(game),
-  });
-  if (!res.ok) throw new Error(`DB write failed (${res.status})`);
+/** Remove games older than TTL to keep memory tidy. */
+function purgeExpired() {
+  const cutoff = Date.now() - GAME_TTL_MS;
+  for (const [code, game] of games) {
+    if (game.createdAt < cutoff) games.delete(code);
+  }
 }
 
 /** Lightweight view: participants + version, no photo data. */
@@ -39,7 +34,7 @@ function gameMeta(game) {
   };
 }
 
-module.exports = async function handler(req, res) {
+module.exports = function handler(req, res) {
   // Allow any origin — the game link is meant to be shared publicly.
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
@@ -53,7 +48,7 @@ module.exports = async function handler(req, res) {
   // ── GET /api/game?code=XXXX[&meta=1] ─────────────────────────────────────
   if (req.method === 'GET') {
     if (!code) return res.status(400).json({ error: 'code required' });
-    const game = await dbGetGame(code);
+    const game = games.get(code);
     if (!game) return res.status(404).json({ error: 'Game not found' });
     return res.status(200).json(metaOnly ? gameMeta(game) : game);
   }
@@ -75,14 +70,15 @@ module.exports = async function handler(req, res) {
       createdAt: Date.now(),
       version: 1,
     };
-    await dbSetGame(newCode, game);
+    games.set(newCode, game);
+    purgeExpired();
     return res.status(201).json(game);
   }
 
   // ── PATCH /api/game?code=XXXX  { participant?, entries?, deleteEntry? } ───
   if (req.method === 'PATCH') {
     if (!code) return res.status(400).json({ error: 'code required' });
-    const game = await dbGetGame(code);
+    const game = games.get(code);
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
     const body = req.body || {};
@@ -97,7 +93,6 @@ module.exports = async function handler(req, res) {
     }
     game.version = (game.version || 1) + 1;
 
-    await dbSetGame(code, game);
     return res.status(200).json(metaOnly ? gameMeta(game) : game);
   }
 
