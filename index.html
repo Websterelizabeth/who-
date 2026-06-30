@@ -4,8 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dating Reveal Game</title>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
@@ -84,9 +82,7 @@
     .back-btn { background: #f0f0f0; color: #333; margin-bottom: 16px; }
     .back-btn:hover { background: #e0e0e0; }
     
-    /* GAME PLAY STYLES */
     .game-play-container { display: flex; flex-direction: column; height: 100%; }
-    .game-image-container { flex: 1; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
     .game-image-wrapper { position: relative; text-align: center; }
     .game-image-name { font-size: 24px; font-weight: bold; color: #667eea; margin-bottom: 12px; min-height: 30px; }
     .game-image-wrapper img { max-width: 100%; max-height: 350px; border-radius: 8px; }
@@ -102,12 +98,10 @@
     .controls-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px; }
     .controls-bottom button { margin: 0; padding: 10px; font-size: 12px; }
 
-    /* MODAL STYLES */
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; }
     .modal-overlay.show { display: flex; align-items: center; justify-content: center; }
     .modal { background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
     .modal h2 { margin-bottom: 16px; color: #333; }
-    .modal-close { float: right; background: #f0f0f0; color: #333; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
     .modal-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
     .modal-inputs input { margin: 0; width: 100%; }
     .modal-inputs label { margin: 0 0 6px 0; }
@@ -303,21 +297,12 @@
 </div>
 
 <script>
-// FIREBASE CONFIG
-const firebaseConfig = {
-  apiKey: "AIzaSyAVKSm0e_Q4DhKpVKrQxLvW8VJYZPJp8LQ",
-  authDomain: "dating-reveal-game-c3ede.firebaseapp.com",
-  databaseURL: "https://dating-reveal-game-c3ede-default-rtdb.firebaseio.com",
-  projectId: "dating-reveal-game-c3ede",
-  storageBucket: "dating-reveal-game-c3ede.appspot.com",
-  messagingSenderId: "841169687316",
-  appId: "1:841169687316:web:9c2e2f5e7d3c8b4a2f1e2d3c"
-};
+const API_URL = 'https://dating-reveal-game-backend.glitch.me';
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+let currentGameCode = null;
+let currentPlayerName = null;
+let pollInterval = null;
 
-// UTILITY FUNCTIONS
 function generateGameCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let code = '';
@@ -340,16 +325,9 @@ function showTab(e, name) {
   e.target.classList.add('active');
 }
 
-// GAME STATE
-let currentGameId = null;
-let currentGameCode = null;
-let currentPlayerName = null;
-let gameListener = null;
-let entriesListener = null;
-
-// NAVIGATION
 function goToWelcome() {
   showScreen('welcomeScreen');
+  if (pollInterval) clearInterval(pollInterval);
 }
 
 function goToCreateGame() {
@@ -364,8 +342,7 @@ function goToJoinGame() {
   showScreen('joinGameScreen');
 }
 
-// CREATE/JOIN GAME
-function createGame() {
+async function createGame() {
   const creatorName = document.getElementById('creatorName').value.trim();
   const gameTitle = document.getElementById('gameTitle').value.trim();
 
@@ -376,26 +353,28 @@ function createGame() {
 
   const gameCode = generateGameCode();
   
-  db.ref(`games/${gameCode}`).set({
-    code: gameCode,
-    title: gameTitle,
-    creator: creatorName,
-    participants: { [creatorName]: true },
-    entries: {},
-    createdAt: new Date().toISOString()
-  }).then(() => {
+  try {
+    const response = await fetch(`${API_URL}/api/games`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: gameCode, title: gameTitle, creator: creatorName })
+    });
+    
+    if (!response.ok) throw new Error('Failed to create game');
+    
     currentGameCode = gameCode;
-    currentGameId = gameCode;
     currentPlayerName = creatorName;
     
     document.getElementById('displayCode').textContent = gameCode;
     document.getElementById('codeGameTitle').textContent = gameTitle;
     document.getElementById('codeGameCode').textContent = gameCode;
     showScreen('gameCodeScreen');
-  }).catch(err => alert('Error creating game: ' + err.message));
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
 }
 
-function joinGame() {
+async function joinGame() {
   const playerName = document.getElementById('playerName').value.trim();
   const gameCode = document.getElementById('gameCode').value.trim().toUpperCase();
 
@@ -404,36 +383,44 @@ function joinGame() {
     return;
   }
 
-  db.ref(`games/${gameCode}`).once('value', (snapshot) => {
-    if (!snapshot.exists()) {
-      alert('Game not found. Check the code and try again.');
-      return;
-    }
-
-    const game = snapshot.val();
+  try {
+    const response = await fetch(`${API_URL}/api/games/${gameCode}/join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName })
+    });
     
-    // Add player to participants
-    db.ref(`games/${gameCode}/participants/${playerName}`).set(true).then(() => {
-      currentGameCode = gameCode;
-      currentGameId = gameCode;
-      currentPlayerName = playerName;
-      
-      loadLobbyScreen();
-      showScreen('lobbyScreen');
-    }).catch(err => alert('Error joining game: ' + err.message));
-  });
+    if (!response.ok) throw new Error('Game not found. Check the code.');
+    
+    currentGameCode = gameCode;
+    currentPlayerName = playerName;
+    
+    loadLobbyScreen();
+    showScreen('lobbyScreen');
+    startPolling();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
 }
 
 function startGameAfterCreate() {
   loadLobbyScreen();
   showScreen('lobbyScreen');
+  startPolling();
+}
+
+function startPolling() {
+  pollInterval = setInterval(async () => {
+    updateParticipantsList();
+    updateMySubmissions();
+    updateAllGrid();
+    updateStartButton();
+  }, 1000);
 }
 
 function exitGame() {
   if (confirm('Exit game?')) {
-    if (gameListener) gameListener();
-    if (entriesListener) entriesListener();
-    currentGameId = null;
+    if (pollInterval) clearInterval(pollInterval);
     currentGameCode = null;
     currentPlayerName = null;
     goToWelcome();
@@ -449,49 +436,46 @@ function copyGameCode() {
   });
 }
 
-// LOBBY FUNCTIONS
-function loadLobbyScreen() {
-  if (gameListener) gameListener();
-  if (entriesListener) entriesListener();
-
-  db.ref(`games/${currentGameCode}`).once('value', (snapshot) => {
-    const game = snapshot.val();
+async function loadLobbyScreen() {
+  try {
+    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
+    const game = await response.json();
+    
     document.getElementById('lobbyGameTitle').textContent = game.title;
     document.getElementById('lobbyGameCode').textContent = currentGameCode;
     document.getElementById('lobbyPlayerName').textContent = currentPlayerName;
-  });
-
-  // Real-time listeners
-  gameListener = db.ref(`games/${currentGameCode}`).on('value', () => {
+    
     updateParticipantsList();
-    updateStartButton();
-  });
-
-  entriesListener = db.ref(`games/${currentGameCode}/entries`).on('value', () => {
     updateMySubmissions();
     updateAllGrid();
     updateStartButton();
-  });
+  } catch (err) {
+    alert('Error loading game: ' + err.message);
+  }
 }
 
-function updateParticipantsList() {
-  db.ref(`games/${currentGameCode}/participants`).once('value', (snapshot) => {
-    const participants = snapshot.val() || {};
-    const names = Object.keys(participants);
+async function updateParticipantsList() {
+  try {
+    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
+    const game = await response.json();
+    const participants = Object.keys(game.participants || {});
     const container = document.getElementById('participantsList');
 
-    container.innerHTML = names.map(p => `
+    container.innerHTML = participants.map(p => `
       <div class="participant joined">
         <span>${p}</span>
         <span class="participant-status">✓ Joined</span>
       </div>
     `).join('');
-  });
+  } catch (err) {
+    console.error('Error updating participants:', err);
+  }
 }
 
-function updateStartButton() {
-  db.ref(`games/${currentGameCode}`).once('value', (snapshot) => {
-    const game = snapshot.val();
+async function updateStartButton() {
+  try {
+    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
+    const game = await response.json();
     const entries = Object.keys(game.entries || {}).length;
     const participants = Object.keys(game.participants || {}).length;
     const startBtn = document.getElementById('startGameBtn');
@@ -504,10 +488,11 @@ function updateStartButton() {
       startBtn.disabled = true;
       hint.textContent = 'Waiting for participants to submit photos...';
     }
-  });
+  } catch (err) {
+    console.error('Error updating start button:', err);
+  }
 }
 
-// PHOTO SUBMISSION
 let selectedPhotos = [];
 let currentPhotoForName = null;
 
@@ -548,7 +533,7 @@ function updatePhotoCounter() {
   document.getElementById('photoCounter').textContent = `${selected} photo${selected !== 1 ? 's' : ''} selected`;
 }
 
-function submitPhotos() {
+async function submitPhotos() {
   const selected = document.querySelectorAll('.photo-item.selected');
 
   if (selected.length === 0) {
@@ -556,7 +541,6 @@ function submitPhotos() {
     return;
   }
 
-  // Check if all selected photos have names
   let allNamed = true;
   selected.forEach((item) => {
     if (!item.dataset.firstName || !item.dataset.lastName || item.dataset.firstName.trim() === '' || item.dataset.lastName.trim() === '') {
@@ -569,26 +553,27 @@ function submitPhotos() {
     return;
   }
 
-  const updates = {};
-  let photoCount = 0;
-
+  const entries = [];
   selected.forEach((item) => {
     const fullName = item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim();
-    const entryId = Date.now() + Math.random();
-    
-    updates[`games/${currentGameCode}/entries/${entryId}`] = {
-      id: entryId,
-      submittedBy: currentPlayerName,
+    entries.push({
       firstName: item.dataset.firstName.trim(),
       lastName: item.dataset.lastName.trim(),
       fullName: fullName,
       photo: item.dataset.data,
-      timestamp: new Date().toISOString()
-    };
-    photoCount++;
+      submittedBy: currentPlayerName
+    });
   });
 
-  db.ref().update(updates).then(() => {
+  try {
+    const response = await fetch(`${API_URL}/api/games/${currentGameCode}/entries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries })
+    });
+
+    if (!response.ok) throw new Error('Failed to submit photos');
+
     document.getElementById('photoInput').value = '';
     document.getElementById('photoGrid').innerHTML = '';
     updatePhotoCounter();
@@ -596,13 +581,21 @@ function submitPhotos() {
     setTimeout(() => {
       document.getElementById('successMsg').classList.remove('show');
     }, 3000);
-  }).catch(err => alert('Error submitting photos: ' + err.message));
+
+    updateMySubmissions();
+    updateAllGrid();
+    updateStartButton();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
 }
 
-function updateMySubmissions() {
-  db.ref(`games/${currentGameCode}/entries`).once('value', (snapshot) => {
-    const allEntries = snapshot.val() || {};
-    const myEntries = Object.values(allEntries).filter(e => e.submittedBy === currentPlayerName);
+async function updateMySubmissions() {
+  try {
+    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
+    const game = await response.json();
+    const allEntries = Object.values(game.entries || {});
+    const myEntries = allEntries.filter(e => e.submittedBy === currentPlayerName);
     const container = document.getElementById('mySubmissions');
 
     if (myEntries.length === 0) {
@@ -616,24 +609,39 @@ function updateMySubmissions() {
           <div class="entry-card-img"><img src="${e.photo}" alt="Photo"></div>
           <div class="entry-card-name">${e.fullName}</div>
           <div class="entry-card-actions">
-            <button class="btn-danger" onclick="deleteEntry('${e.id}')">Delete</button>
+            <button class="btn-danger" onclick="deleteEntry('${e.fullName}')">Delete</button>
           </div>
         </div>
       </div>
     `).join('');
-  });
+  } catch (err) {
+    console.error('Error updating submissions:', err);
+  }
 }
 
-function deleteEntry(id) {
+async function deleteEntry(fullName) {
   if (!confirm('Delete this photo?')) return;
   
-  db.ref(`games/${currentGameCode}/entries/${id}`).remove()
-    .catch(err => alert('Error deleting entry: ' + err.message));
+  try {
+    const response = await fetch(`${API_URL}/api/games/${currentGameCode}/entries/${encodeURIComponent(fullName)}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) throw new Error('Failed to delete entry');
+    
+    updateMySubmissions();
+    updateAllGrid();
+    updateStartButton();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
 }
 
-function updateAllGrid() {
-  db.ref(`games/${currentGameCode}/entries`).once('value', (snapshot) => {
-    const entries = Object.values(snapshot.val() || {});
+async function updateAllGrid() {
+  try {
+    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
+    const game = await response.json();
+    const entries = Object.values(game.entries || {});
     const grid = document.getElementById('grid');
 
     if (entries.length === 0) {
@@ -650,10 +658,11 @@ function updateAllGrid() {
         </div>
       </div>
     `).join('');
-  });
+  } catch (err) {
+    console.error('Error updating grid:', err);
+  }
 }
 
-// MODAL FUNCTIONS
 function openNameModal(photoElement) {
   currentPhotoForName = photoElement;
   document.getElementById('firstName').value = photoElement.dataset.firstName || '';
@@ -700,13 +709,14 @@ document.addEventListener('keypress', (e) => {
   }
 });
 
-// GAME PLAY
 let currentPhotoIndex = 0;
 let gamePhotos = [];
 
-function startGame() {
-  db.ref(`games/${currentGameCode}/entries`).once('value', (snapshot) => {
-    const entries = Object.values(snapshot.val() || {});
+async function startGame() {
+  try {
+    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
+    const game = await response.json();
+    const entries = Object.values(game.entries || {});
 
     if (entries.length === 0) {
       alert('No photos submitted yet');
@@ -716,13 +726,14 @@ function startGame() {
     gamePhotos = entries.sort(() => Math.random() - 0.5);
     currentPhotoIndex = 0;
 
-    db.ref(`games/${currentGameCode}`).once('value', (snap) => {
-      document.getElementById('playGameTitle').textContent = snap.val().title;
-    });
+    document.getElementById('playGameTitle').textContent = game.title;
 
     loadPhotoRound();
     showScreen('gamePlayScreen');
-  });
+    if (pollInterval) clearInterval(pollInterval);
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
 }
 
 function loadPhotoRound() {
@@ -739,13 +750,11 @@ function loadPhotoRound() {
   document.getElementById('guessBtn').style.display = 'block';
   document.getElementById('nextBtn').style.display = 'none';
 
-  db.ref(`games/${currentGameCode}/participants`).once('value', (snapshot) => {
-    const participants = Object.keys(snapshot.val() || {});
-    const guessContainer = document.getElementById('guessButtons');
-    guessContainer.innerHTML = participants.map(p => `
-      <button class="guess-btn" onclick="selectGuess('${p}')" data-name="${p}">${p}</button>
-    `).join('');
-  });
+  const participants = [...new Set(gamePhotos.map(p => p.submittedBy))];
+  const guessContainer = document.getElementById('guessButtons');
+  guessContainer.innerHTML = participants.map(p => `
+    <button class="guess-btn" onclick="selectGuess('${p}')" data-name="${p}">${p}</button>
+  `).join('');
 }
 
 function selectGuess(name) {
@@ -777,16 +786,13 @@ function nextPhoto() {
 
 function endGame() {
   if (confirm('End game?')) {
-    if (gameListener) gameListener();
-    if (entriesListener) entriesListener();
-    currentGameId = null;
+    if (pollInterval) clearInterval(pollInterval);
     currentGameCode = null;
     currentPlayerName = null;
     goToWelcome();
   }
 }
 
-// Override photo grid click to open name modal
 document.addEventListener('click', (e) => {
   if (e.target.closest('.photo-item')) {
     openNameModal(e.target.closest('.photo-item'));
