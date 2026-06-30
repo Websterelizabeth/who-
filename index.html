@@ -148,7 +148,7 @@
     
     <div class="header">
       <h1>Join Game</h1>
-      <p>Enter game code to join</p>
+      <p>Enter the game code or open a shared link</p>
     </div>
 
     <label>Your name</label>
@@ -171,6 +171,7 @@
       <div class="label">Game Code</div>
       <div class="code" id="displayCode">ABC123</div>
       <button class="copy-btn" onclick="copyGameCode()">Copy Code</button>
+      <button class="copy-btn" onclick="copyGameLink()" style="background:#28a745;margin-top:6px;">🔗 Share Link</button>
     </div>
 
     <div class="game-header">
@@ -186,6 +187,12 @@
     <div class="game-header">
       <div class="game-title" id="lobbyGameTitle">Game Title</div>
       <div class="game-code">Code: <span id="lobbyGameCode">ABC123</span></div>
+    </div>
+
+    <div id="hostShareBox" class="info-box" style="display:none;">
+      <strong>Host share link</strong>
+      <input type="text" id="hostShareLink" readonly style="margin-top:8px;">
+      <button onclick="copyHostShareLink()" style="background:#28a745;">🔗 Copy Share Link</button>
     </div>
 
     <div class="logged-in">
@@ -297,70 +304,130 @@
 
 <script>
 // ==================== CONFIGURATION ====================
-// Default: uses localStorage (same browser, multiple tabs).
-// For cross-device sync (iPhone + MacBook), set up Firebase Realtime Database:
-//   1. Go to https://console.firebase.google.com → create project
-//   2. Add a Realtime Database (Start in test mode)
-//   3. Copy your project config below and set FIREBASE_CONFIG
-//   4. Uncomment the two Firebase <script> tags before this script
-//
-// const FIREBASE_CONFIG = {
-//   apiKey: "...",
-//   authDomain: "YOUR_PROJECT.firebaseapp.com",
-//   databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-//   projectId: "YOUR_PROJECT_ID",
-// };
-const FIREBASE_CONFIG = null;
+const API_BASE = '/api/game';
 
 // ==================== STATE ====================
-
-const STORAGE_KEY = 'datingReveal_v1';
-let gameData = {};
+const STORAGE_KEY = 'datingReveal_v2';
+let gameData = {};          // local cache keyed by game code
 let currentGameCode = null;
 let currentPlayerName = null;
 let pollInterval = null;
-let _firebaseUnsub = null;
+let _lastKnownVersion = 0;
 
-// ==================== STORAGE INIT ====================
-
-// Load persisted games from localStorage on page load
-(function loadPersistedGames() {
+// ==================== LOCAL CACHE ====================
+(function loadCache() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) gameData = JSON.parse(raw) || {};
-  } catch (e) {
-    gameData = {};
-  }
+  } catch (e) { gameData = {}; }
 })();
 
-// Cross-tab sync via BroadcastChannel (same browser, different tabs)
+function _saveCache() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData));
+  } catch (e) {
+    try { localStorage.removeItem(STORAGE_KEY); localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData)); } catch (_) {}
+  }
+}
+
+// Cross-tab sync (same browser, different tabs)
 const _bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('datingReveal') : null;
 if (_bc) {
   _bc.onmessage = ({ data }) => {
-    if (data && data.type === 'gamesUpdated') {
-      gameData = data.gameData;
+    if (data && data.type === 'gameUpdated' && data.code && data.game) {
+      gameData[data.code] = data.game;
       _refreshLobby();
     }
   };
 }
 
-function _persistGames() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData));
-  } catch (e) {
-    // Storage may be full; clear and retry
-    try { localStorage.removeItem(STORAGE_KEY); localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData)); } catch (e2) {}
-  }
-  if (_bc) _bc.postMessage({ type: 'gamesUpdated', gameData });
+function _broadcastGame(code) {
+  if (_bc && gameData[code]) _bc.postMessage({ type: 'gameUpdated', code, game: gameData[code] });
 }
 
-function _saveGame(gameCode) {
-  _persistGames();
-  if (window._fbDB && gameData[gameCode]) {
-    window._fbDB.ref('games/' + gameCode).set(gameData[gameCode])
-      .catch(e => console.warn('Firebase save error:', e));
+// ==================== API LAYER ====================
+
+async function _apiCreate(code, title, creator) {
+  try {
+    const res = await fetch(API_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, title, creator }),
+    });
+    if (!res.ok) throw await _apiHttpError('Create', res);
+    return res.json();
+  } catch (err) {
+    throw _normalizeApiError('Create', err);
   }
 }
+
+async function _apiGet(code, metaOnly) {
+  const op = metaOnly ? 'Get metadata' : 'Get';
+  try {
+    const url = metaOnly ? `${API_BASE}?code=${code}&meta=1` : `${API_BASE}?code=${code}`;
+    const res = await fetch(url);
+    if (res.status === 404) return null;
+    if (!res.ok) throw await _apiHttpError(op, res);
+    return res.json();
+  } catch (err) {
+    throw _normalizeApiError(op, err);
+  }
+}
+
+async function _apiPatch(code, patch) {
+  try {
+    const res = await fetch(`${API_BASE}?code=${code}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw await _apiHttpError('Update', res);
+    return res.json();
+  } catch (err) {
+    throw _normalizeApiError('Update', err);
+  }
+}
+
+async function _apiHttpError(action, res) {
+  let msg = '';
+  try {
+    const body = await res.json();
+    msg = body && body.error ? String(body.error) : '';
+  } catch (_) {
+    try { msg = (await res.text() || '').trim(); } catch (__) { msg = ''; }
+  }
+  const err = new Error(`${action} failed (${res.status})`);
+  err.status = res.status;
+  err.kind = 'http';
+  err.serverMessage = msg;
+  return err;
+}
+
+function _normalizeApiError(action, err) {
+  if (err && (err.kind === 'http' || err.kind === 'network')) return err;
+  const normalized = new Error(`${action} failed`);
+  const msg = String((err && err.message) || '').toLowerCase();
+  const networkLike = !navigator.onLine || msg.includes('failed to fetch') || msg.includes('networkerror');
+  normalized.kind = networkLike ? 'network' : 'unknown';
+  normalized.cause = err;
+  return normalized;
+}
+
+function _friendlyApiError(actionLabel, err, notFoundMsg) {
+  if (err && err.status === 404 && notFoundMsg) return notFoundMsg;
+  if (err && err.kind === 'network') {
+    return `${actionLabel} failed because your device appears offline. Reconnect and try again.`;
+  }
+  if (!navigator.onLine) {
+    return `${actionLabel} failed because your device appears offline. Reconnect and try again.`;
+  }
+  if (err && err.serverMessage) {
+    return `${actionLabel} failed: ${err.serverMessage}`;
+  }
+  return `${actionLabel} failed. Please try again.`;
+}
+
+// ==================== SYNC / POLLING ====================
 
 function _refreshLobby() {
   if (!currentGameCode) return;
@@ -371,46 +438,36 @@ function _refreshLobby() {
   updateStartButton();
 }
 
-// ==================== FIREBASE (OPTIONAL) ====================
-
-if (FIREBASE_CONFIG && typeof firebase !== 'undefined') {
+async function _pollForUpdates() {
+  if (!currentGameCode) return;
   try {
-    firebase.initializeApp(FIREBASE_CONFIG);
-    window._fbDB = firebase.database();
-    console.log('✅ Firebase connected – cross-device sync enabled');
-  } catch (e) {
-    console.warn('Firebase init failed:', e.message);
-  }
-}
+    // Lightweight poll: only participants + version, no photo data
+    const meta = await _apiGet(currentGameCode, true);
+    if (!meta) return;
 
-function _connectFirebaseListener(gameCode) {
-  if (!window._fbDB) return;
-  _disconnectFirebaseListener();
-  const ref = window._fbDB.ref('games/' + gameCode);
-  const handler = ref.on('value', snap => {
-    const data = snap.val();
-    if (data) {
-      gameData[gameCode] = data;
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData)); } catch (e) {}
-      _refreshLobby();
+    const local = gameData[currentGameCode];
+    if (!local) return;
+
+    if (meta.version !== _lastKnownVersion) {
+      // State changed — fetch full game (includes photos)
+      _lastKnownVersion = meta.version;
+      const full = await _apiGet(currentGameCode, false);
+      if (full) {
+        gameData[currentGameCode] = full;
+        _saveCache();
+        _broadcastGame(currentGameCode);
+      }
     }
-  }, err => console.warn('Firebase listener error:', err));
-  _firebaseUnsub = () => ref.off('value', handler);
-}
-
-function _disconnectFirebaseListener() {
-  if (_firebaseUnsub) { _firebaseUnsub(); _firebaseUnsub = null; }
-}
-
-async function _fetchGameFromCloud(gameCode) {
-  if (!window._fbDB) return null;
-  try {
-    const snap = await window._fbDB.ref('games/' + gameCode).get();
-    return snap.val();
+    _refreshLobby();
   } catch (e) {
-    console.warn('Firebase fetch error:', e);
-    return null;
+    console.warn('Poll error:', e.message);
   }
+}
+
+function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  _pollForUpdates();                                         // immediate first poll
+  pollInterval = setInterval(_pollForUpdates, 3000);
 }
 
 // ==================== IMAGE COMPRESSION ====================
@@ -468,37 +525,41 @@ function goToCreateGame() {
 }
 
 function goToJoinGame() {
+  // Keep code pre-filled if it was set by URL param
   document.getElementById('playerName').value = '';
-  document.getElementById('gameCode').value = '';
   showScreen('joinGameScreen');
 }
 
 // ==================== GAME CREATION ====================
 
-function createGame() {
+async function createGame() {
   const creatorName = document.getElementById('creatorName').value.trim();
   const gameTitle = document.getElementById('gameTitle').value.trim();
-
   if (!creatorName || !gameTitle) { alert('Fill in all fields'); return; }
 
-  const gameCode = generateGameCode();
-  gameData[gameCode] = {
-    code: gameCode,
-    title: gameTitle,
-    creator: creatorName,
-    participants: { [creatorName]: true },
-    entries: {},
-    createdAt: Date.now()
-  };
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = 'Creating…';
 
-  currentGameCode = gameCode;
-  currentPlayerName = creatorName;
-  _saveGame(gameCode);
+  try {
+    const gameCode = generateGameCode();
+    const game = await _apiCreate(gameCode, gameTitle, creatorName);
+    gameData[gameCode] = game;
+    _saveCache();
 
-  document.getElementById('displayCode').textContent = gameCode;
-  document.getElementById('codeGameTitle').textContent = gameTitle;
-  document.getElementById('codeGameCode').textContent = gameCode;
-  showScreen('gameCodeScreen');
+    currentGameCode = gameCode;
+    currentPlayerName = creatorName;
+    _lastKnownVersion = game.version;
+
+    document.getElementById('displayCode').textContent = gameCode;
+    document.getElementById('codeGameTitle').textContent = gameTitle;
+    document.getElementById('codeGameCode').textContent = gameCode;
+    showScreen('gameCodeScreen');
+  } catch (e) {
+    alert(_friendlyApiError('Could not create game', e));
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Game';
+  }
 }
 
 // ==================== GAME JOINING ====================
@@ -506,62 +567,41 @@ function createGame() {
 async function joinGame() {
   const playerName = document.getElementById('playerName').value.trim();
   const gameCode = document.getElementById('gameCode').value.trim().toUpperCase();
-
   if (!playerName || !gameCode) { alert('Fill in all fields'); return; }
 
   const btn = document.getElementById('joinBtn');
-  btn.disabled = true;
-  btn.textContent = 'Looking up game…';
+  btn.disabled = true; btn.textContent = 'Looking up game…';
 
   try {
-    // Check localStorage first, then Firebase
-    let game = gameData[gameCode];
-    if (!game) {
-      game = await _fetchGameFromCloud(gameCode);
-      if (game) { gameData[gameCode] = game; _persistGames(); }
-    }
+    const updated = await _apiPatch(gameCode, { participant: playerName });
+    gameData[gameCode] = updated;
+    _saveCache();
 
-    if (!game) {
-      alert('Game not found. Double-check the 6-character code and try again.');
-      return;
-    }
-
-    game.participants[playerName] = true;
     currentGameCode = gameCode;
     currentPlayerName = playerName;
-    _saveGame(gameCode);
-    _connectFirebaseListener(gameCode);
+    _lastKnownVersion = updated.version;
 
     loadLobbyScreen();
     showScreen('lobbyScreen');
     startPolling();
+  } catch (e) {
+    alert(_friendlyApiError('Failed to join game', e, 'Game not found. Double-check the 6-character code and try again.'));
+    console.error(e);
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Join Game';
+    btn.disabled = false; btn.textContent = 'Join Game';
   }
 }
 
 function startGameAfterCreate() {
-  _connectFirebaseListener(currentGameCode);
+  _lastKnownVersion = (gameData[currentGameCode] || {}).version || 0;
   loadLobbyScreen();
   showScreen('lobbyScreen');
   startPolling();
 }
 
-function startPolling() {
-  if (pollInterval) clearInterval(pollInterval);
-  pollInterval = setInterval(() => {
-    updateParticipantsList();
-    updateMySubmissions();
-    updateAllGrid();
-    updateStartButton();
-  }, 500);
-}
-
 function exitGame() {
   if (confirm('Exit game?')) {
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-    _disconnectFirebaseListener();
     currentGameCode = null;
     currentPlayerName = null;
     goToWelcome();
@@ -574,7 +614,28 @@ function copyGameCode() {
     const btn = event.target;
     btn.textContent = '✓ Copied!';
     setTimeout(() => { btn.textContent = 'Copy Code'; }, 2000);
-  });
+  }).catch(() => alert('Code: ' + code));
+}
+
+function copyGameLink() {
+  const code = (currentGameCode || document.getElementById('displayCode').textContent || '').trim().toUpperCase();
+  const url = `${location.origin}${location.pathname}?join=${code}`;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = event.target;
+    btn.textContent = '✓ Link Copied!';
+    setTimeout(() => { btn.textContent = '🔗 Share Link'; }, 2000);
+  }).catch(() => prompt('Share this link with your friends:', url));
+}
+
+function copyHostShareLink() {
+  const input = document.getElementById('hostShareLink');
+  const url = (input.value || '').trim();
+  if (!url) return;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = event.target;
+    btn.textContent = '✓ Link Copied!';
+    setTimeout(() => { btn.textContent = '🔗 Copy Share Link'; }, 2000);
+  }).catch(() => prompt('Share this link with your friends:', url));
 }
 
 // ==================== LOBBY ====================
@@ -584,6 +645,18 @@ function loadLobbyScreen() {
   document.getElementById('lobbyGameTitle').textContent = game.title;
   document.getElementById('lobbyGameCode').textContent = currentGameCode;
   document.getElementById('lobbyPlayerName').textContent = currentPlayerName;
+
+  const hostShareBox = document.getElementById('hostShareBox');
+  const hostShareLink = document.getElementById('hostShareLink');
+  const isHost = game && game.creator === currentPlayerName;
+  if (isHost) {
+    hostShareLink.value = `${location.origin}${location.pathname}?join=${currentGameCode}`;
+    hostShareBox.style.display = 'block';
+  } else {
+    hostShareLink.value = '';
+    hostShareBox.style.display = 'none';
+  }
+
   updateParticipantsList();
   updateMySubmissions();
   updateAllGrid();
@@ -656,7 +729,7 @@ function updatePhotoCounter() {
   document.getElementById('photoCounter').textContent = `${selected} photo${selected !== 1 ? 's' : ''} selected`;
 }
 
-function submitPhotos() {
+async function submitPhotos() {
   const selected = document.querySelectorAll('.photo-item.selected');
   if (selected.length === 0) { alert('Select at least one photo'); return; }
 
@@ -668,31 +741,46 @@ function submitPhotos() {
     return;
   }
 
-  const game = gameData[currentGameCode];
-  selected.forEach(item => {
-    const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    game.entries[id] = {
-      id,
-      firstName: item.dataset.firstName.trim(),
-      lastName: item.dataset.lastName.trim(),
-      fullName: item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim(),
-      photo: item.dataset.data,
-      submittedBy: currentPlayerName
-    };
-  });
+  const submitBtn = document.querySelector('#submit-photos button[onclick="submitPhotos()"]');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Uploading…'; }
 
-  _saveGame(currentGameCode);
+  try {
+    const entries = {};
+    selected.forEach(item => {
+      const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      entries[id] = {
+        id,
+        firstName: item.dataset.firstName.trim(),
+        lastName: item.dataset.lastName.trim(),
+        fullName: item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim(),
+        photo: item.dataset.data,
+        submittedBy: currentPlayerName,
+      };
+    });
 
-  document.getElementById('photoInput').value = '';
-  document.getElementById('photoGrid').innerHTML = '';
-  updatePhotoCounter();
-  const msg = document.getElementById('successMsg');
-  msg.classList.add('show');
-  setTimeout(() => msg.classList.remove('show'), 3000);
+    const updated = await _apiPatch(currentGameCode, { entries });
+    gameData[currentGameCode] = updated;
+    _saveCache();
+    _broadcastGame(currentGameCode);
+    _lastKnownVersion = updated.version;
 
-  updateMySubmissions();
-  updateAllGrid();
-  updateStartButton();
+    document.getElementById('photoInput').value = '';
+    document.getElementById('photoGrid').innerHTML = '';
+    updatePhotoCounter();
+
+    const msg = document.getElementById('successMsg');
+    msg.classList.add('show');
+    setTimeout(() => msg.classList.remove('show'), 3000);
+
+    updateMySubmissions();
+    updateAllGrid();
+    updateStartButton();
+  } catch (e) {
+    alert(_friendlyApiError('Failed to submit photos', e));
+    console.error(e);
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Photos'; }
+  }
 }
 
 function updateMySubmissions() {
@@ -714,16 +802,21 @@ function updateMySubmissions() {
   `).join('');
 }
 
-function deleteEntry(entryId) {
+async function deleteEntry(entryId) {
   if (!confirm('Delete this photo?')) return;
-  const game = gameData[currentGameCode];
-  if (game && game.entries && game.entries[entryId]) {
-    delete game.entries[entryId];
-    _saveGame(currentGameCode);
+  try {
+    const updated = await _apiPatch(currentGameCode, { deleteEntry: entryId });
+    gameData[currentGameCode] = updated;
+    _saveCache();
+    _broadcastGame(currentGameCode);
+    _lastKnownVersion = updated.version;
+    updateMySubmissions();
+    updateAllGrid();
+    updateStartButton();
+  } catch (e) {
+    alert(_friendlyApiError('Failed to delete photo', e));
+    console.error(e);
   }
-  updateMySubmissions();
-  updateAllGrid();
-  updateStartButton();
 }
 
 function updateAllGrid() {
@@ -783,18 +876,35 @@ document.addEventListener('keypress', e => {
 let currentPhotoIndex = 0;
 let gamePhotos = [];
 
-function startGame() {
-  const game = gameData[currentGameCode];
-  const entries = Object.values(game.entries || {});
-  if (entries.length === 0) { alert('No photos submitted yet'); return; }
+async function startGame() {
+  const startBtn = document.getElementById('startGameBtn');
+  startBtn.disabled = true; startBtn.textContent = 'Loading…';
 
-  gamePhotos = entries.sort(() => Math.random() - 0.5);
-  currentPhotoIndex = 0;
-  document.getElementById('playGameTitle').textContent = game.title;
+  try {
+    // Fetch full game state to ensure all photos are loaded
+    const full = await _apiGet(currentGameCode, false);
+    if (full) {
+      gameData[currentGameCode] = full;
+      _saveCache();
+    }
 
-  loadPhotoRound();
-  showScreen('gamePlayScreen');
-  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    const game = gameData[currentGameCode];
+    const entries = Object.values(game.entries || {});
+    if (entries.length === 0) { alert('No photos submitted yet'); return; }
+
+    gamePhotos = entries.sort(() => Math.random() - 0.5);
+    currentPhotoIndex = 0;
+    document.getElementById('playGameTitle').textContent = game.title;
+
+    loadPhotoRound();
+    showScreen('gamePlayScreen');
+    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  } catch (e) {
+    alert(_friendlyApiError('Failed to load game', e));
+    console.error(e);
+  } finally {
+    startBtn.disabled = false; startBtn.textContent = 'Start Game';
+  }
 }
 
 function loadPhotoRound() {
@@ -834,18 +944,27 @@ function nextPhoto() { currentPhotoIndex++; loadPhotoRound(); }
 function endGame() {
   if (confirm('End game?')) {
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-    _disconnectFirebaseListener();
     currentGameCode = null;
     currentPlayerName = null;
     goToWelcome();
   }
 }
+
+// ==================== URL PARAMETER HANDLING ====================
+// When a player opens a shared link like ?join=ABC123, pre-fill the
+// game code and show the join screen automatically.
+
+(function handleUrlParams() {
+  try {
+    const params = new URLSearchParams(location.search);
+    const joinCode = (params.get('join') || params.get('code') || '').trim().toUpperCase();
+    if (joinCode && /^[A-Z0-9]{6}$/.test(joinCode)) {
+      document.getElementById('gameCode').value = joinCode;
+      showScreen('joinGameScreen');
+      document.getElementById('playerName').focus();
+    }
+  } catch (e) { /* ignore */ }
+})();
 </script>
-<!-- 
-  For cross-device sync, uncomment the two lines below, then fill in FIREBASE_CONFIG
-  at the top of the <script> block above.
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
--->
 </body>
 </html>
