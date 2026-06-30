@@ -295,14 +295,47 @@
   </div>
 </div>
 
+<!-- Firebase Realtime Database SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
 <script>
-// Cloud Firestore alternative: Using browser storage with cloud sync via JSON file
-// For production, use: Supabase, Firebase Realtime DB, or similar
+// ================================================================
+// FIREBASE CONFIG — Replace ALL values below with your project's
+// 1. Go to https://console.firebase.google.com → create a project
+// 2. Add a Web App (</> icon) → copy the config object here
+// 3. Enable Realtime Database: Build → Realtime Database → Create database
+// 4. In the Rules tab set: { "rules": { ".read": true, ".write": true } }
+// ================================================================
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+  document.body.innerHTML = `
+    <div style="font-family:sans-serif;max-width:500px;margin:60px auto;padding:30px;background:white;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15)">
+      <h2 style="color:#c0392b">⚠️ Firebase Not Configured</h2>
+      <p style="margin:16px 0">Open <strong>index.html</strong> and fill in your Firebase project details in the <code>firebaseConfig</code> block at the top of the &lt;script&gt; section.</p>
+      <p>See <strong>README.md</strong> for step-by-step instructions.</p>
+    </div>`;
+} else {
+  firebase.initializeApp(firebaseConfig);
+}
+const db = firebase.database();
+
+// ================================================================
 
 let currentGameCode = null;
 let currentPlayerName = null;
-let pollInterval = null;
-let gameData = {};
+let currentGameData = null;
+let gameRef = null;
+let gameListener = null;
 
 function generateGameCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -326,9 +359,31 @@ function showTab(e, name) {
   e.target.classList.add('active');
 }
 
+function subscribeToGame(gameCode) {
+  if (gameRef && gameListener) gameRef.off('value', gameListener);
+  gameRef = db.ref('games/' + gameCode);
+  gameListener = gameRef.on('value', (snapshot) => {
+    currentGameData = snapshot.val();
+    if (currentGameData) {
+      updateParticipantsList();
+      updateMySubmissions();
+      updateAllGrid();
+      updateStartButton();
+    }
+  });
+}
+
+function unsubscribeFromGame() {
+  if (gameRef && gameListener) {
+    gameRef.off('value', gameListener);
+    gameRef = null;
+    gameListener = null;
+  }
+}
+
 function goToWelcome() {
+  unsubscribeFromGame();
   showScreen('welcomeScreen');
-  if (pollInterval) clearInterval(pollInterval);
 }
 
 function goToCreateGame() {
@@ -343,7 +398,7 @@ function goToJoinGame() {
   showScreen('joinGameScreen');
 }
 
-function createGame() {
+async function createGame() {
   const creatorName = document.getElementById('creatorName').value.trim();
   const gameTitle = document.getElementById('gameTitle').value.trim();
 
@@ -352,27 +407,40 @@ function createGame() {
     return;
   }
 
+  const btn = document.querySelector('#createGameScreen button:last-of-type');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+
   const gameCode = generateGameCode();
-  
-  gameData[gameCode] = {
+  const gameObj = {
     code: gameCode,
     title: gameTitle,
     creator: creatorName,
     participants: { [creatorName]: true },
     entries: {},
-    createdAt: new Date()
+    createdAt: Date.now()
   };
 
-  currentGameCode = gameCode;
-  currentPlayerName = creatorName;
-  
-  document.getElementById('displayCode').textContent = gameCode;
-  document.getElementById('codeGameTitle').textContent = gameTitle;
-  document.getElementById('codeGameCode').textContent = gameCode;
-  showScreen('gameCodeScreen');
+  try {
+    await db.ref('games/' + gameCode).set(gameObj);
+    currentGameCode = gameCode;
+    currentPlayerName = creatorName;
+    currentGameData = gameObj;
+
+    document.getElementById('displayCode').textContent = gameCode;
+    document.getElementById('codeGameTitle').textContent = gameTitle;
+    document.getElementById('codeGameCode').textContent = gameCode;
+    showScreen('gameCodeScreen');
+  } catch (e) {
+    alert('Error creating game. Check your Firebase config and database rules.');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Game';
+  }
 }
 
-function joinGame() {
+async function joinGame() {
   const playerName = document.getElementById('playerName').value.trim();
   const gameCode = document.getElementById('gameCode').value.trim().toUpperCase();
 
@@ -381,41 +449,49 @@ function joinGame() {
     return;
   }
 
-  if (!gameData[gameCode]) {
-    alert('Game not found. Check the code.');
-    return;
-  }
+  const btn = document.querySelector('#joinGameScreen button:last-of-type');
+  btn.disabled = true;
+  btn.textContent = 'Joining...';
 
-  gameData[gameCode].participants[playerName] = true;
-  currentGameCode = gameCode;
-  currentPlayerName = playerName;
-  
-  loadLobbyScreen();
-  showScreen('lobbyScreen');
-  startPolling();
+  try {
+    const snapshot = await db.ref('games/' + gameCode).once('value');
+    if (!snapshot.exists()) {
+      alert('Game not found. Double-check the 6 character code and try again.');
+      return;
+    }
+
+    await db.ref('games/' + gameCode + '/participants/' + playerName).set(true);
+    currentGameCode = gameCode;
+    currentPlayerName = playerName;
+    currentGameData = snapshot.val();
+    currentGameData.participants = currentGameData.participants || {};
+    currentGameData.participants[playerName] = true;
+
+    loadLobbyScreen();
+    showScreen('lobbyScreen');
+    subscribeToGame(gameCode);
+  } catch (e) {
+    alert('Error joining game.');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Join Game';
+  }
 }
 
 function startGameAfterCreate() {
   loadLobbyScreen();
   showScreen('lobbyScreen');
-  startPolling();
-}
-
-function startPolling() {
-  pollInterval = setInterval(() => {
-    updateParticipantsList();
-    updateMySubmissions();
-    updateAllGrid();
-    updateStartButton();
-  }, 500);
+  subscribeToGame(currentGameCode);
 }
 
 function exitGame() {
   if (confirm('Exit game?')) {
-    if (pollInterval) clearInterval(pollInterval);
+    unsubscribeFromGame();
     currentGameCode = null;
     currentPlayerName = null;
-    goToWelcome();
+    currentGameData = null;
+    showScreen('welcomeScreen');
   }
 }
 
@@ -429,12 +505,10 @@ function copyGameCode() {
 }
 
 function loadLobbyScreen() {
-  const game = gameData[currentGameCode];
-  
-  document.getElementById('lobbyGameTitle').textContent = game.title;
+  const game = currentGameData || {};
+  document.getElementById('lobbyGameTitle').textContent = game.title || '';
   document.getElementById('lobbyGameCode').textContent = currentGameCode;
   document.getElementById('lobbyPlayerName').textContent = currentPlayerName;
-  
   updateParticipantsList();
   updateMySubmissions();
   updateAllGrid();
@@ -442,10 +516,9 @@ function loadLobbyScreen() {
 }
 
 function updateParticipantsList() {
-  const game = gameData[currentGameCode];
+  const game = currentGameData || {};
   const participants = Object.keys(game.participants || {});
   const container = document.getElementById('participantsList');
-
   container.innerHTML = participants.map(p => `
     <div class="participant joined">
       <span>${p}</span>
@@ -455,7 +528,7 @@ function updateParticipantsList() {
 }
 
 function updateStartButton() {
-  const game = gameData[currentGameCode];
+  const game = currentGameData || {};
   const entries = Object.keys(game.entries || {}).length;
   const participants = Object.keys(game.participants || {}).length;
   const startBtn = document.getElementById('startGameBtn');
@@ -491,7 +564,6 @@ function handlePhotoSelection() {
       div.dataset.firstName = '';
       div.dataset.lastName = '';
       container.appendChild(div);
-
       updatePhotoCounter();
     };
     reader.readAsDataURL(file);
@@ -510,7 +582,7 @@ function updatePhotoCounter() {
   document.getElementById('photoCounter').textContent = `${selected} photo${selected !== 1 ? 's' : ''} selected`;
 }
 
-function submitPhotos() {
+async function submitPhotos() {
   const selected = document.querySelectorAll('.photo-item.selected');
 
   if (selected.length === 0) {
@@ -520,7 +592,8 @@ function submitPhotos() {
 
   let allNamed = true;
   selected.forEach((item) => {
-    if (!item.dataset.firstName || !item.dataset.lastName || item.dataset.firstName.trim() === '' || item.dataset.lastName.trim() === '') {
+    if (!item.dataset.firstName || !item.dataset.lastName ||
+        item.dataset.firstName.trim() === '' || item.dataset.lastName.trim() === '') {
       allNamed = false;
     }
   });
@@ -530,35 +603,42 @@ function submitPhotos() {
     return;
   }
 
-  const game = gameData[currentGameCode];
+  const btn = document.querySelector('#submit-photos button:last-of-type');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  const updates = {};
   selected.forEach((item) => {
     const fullName = item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim();
-    const id = `${Date.now()}_${Math.random()}`;
-    game.entries[id] = {
+    const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    updates[id] = {
       id,
       firstName: item.dataset.firstName.trim(),
       lastName: item.dataset.lastName.trim(),
-      fullName: fullName,
+      fullName,
       photo: item.dataset.data,
       submittedBy: currentPlayerName
     };
   });
 
-  document.getElementById('photoInput').value = '';
-  document.getElementById('photoGrid').innerHTML = '';
-  updatePhotoCounter();
-  document.getElementById('successMsg').classList.add('show');
-  setTimeout(() => {
-    document.getElementById('successMsg').classList.remove('show');
-  }, 3000);
-
-  updateMySubmissions();
-  updateAllGrid();
-  updateStartButton();
+  try {
+    await db.ref('games/' + currentGameCode + '/entries').update(updates);
+    document.getElementById('photoInput').value = '';
+    document.getElementById('photoGrid').innerHTML = '';
+    updatePhotoCounter();
+    document.getElementById('successMsg').classList.add('show');
+    setTimeout(() => { document.getElementById('successMsg').classList.remove('show'); }, 3000);
+  } catch (e) {
+    alert('Error submitting photos.');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit Photos';
+  }
 }
 
 function updateMySubmissions() {
-  const game = gameData[currentGameCode];
+  const game = currentGameData || {};
   const allEntries = Object.values(game.entries || {});
   const myEntries = allEntries.filter(e => e.submittedBy === currentPlayerName);
   const container = document.getElementById('mySubmissions');
@@ -574,30 +654,25 @@ function updateMySubmissions() {
         <div class="entry-card-img"><img src="${e.photo}" alt="Photo"></div>
         <div class="entry-card-name">${e.fullName}</div>
         <div class="entry-card-actions">
-          <button class="btn-danger" onclick="deleteEntry('${e.fullName}')">Delete</button>
+          <button class="btn-danger" onclick="deleteEntry('${e.id}')">Delete</button>
         </div>
       </div>
     </div>
   `).join('');
 }
 
-function deleteEntry(fullName) {
+async function deleteEntry(entryId) {
   if (!confirm('Delete this photo?')) return;
-  
-  const game = gameData[currentGameCode];
-  const entryId = Object.keys(game.entries).find(id => game.entries[id].fullName === fullName);
-  
-  if (entryId) {
-    delete game.entries[entryId];
+  try {
+    await db.ref('games/' + currentGameCode + '/entries/' + entryId).remove();
+  } catch (e) {
+    alert('Error deleting entry.');
+    console.error(e);
   }
-  
-  updateMySubmissions();
-  updateAllGrid();
-  updateStartButton();
 }
 
 function updateAllGrid() {
-  const game = gameData[currentGameCode];
+  const game = currentGameData || {};
   const entries = Object.values(game.entries || {});
   const grid = document.getElementById('grid');
 
@@ -629,12 +704,12 @@ function confirmNameInput() {
   if (currentPhotoForName) {
     const firstName = document.getElementById('firstName').value.trim();
     const lastName = document.getElementById('lastName').value.trim();
-    
+
     if (!firstName || !lastName) {
       alert('Please enter both first and last name');
       return;
     }
-    
+
     currentPhotoForName.dataset.firstName = firstName;
     currentPhotoForName.dataset.lastName = lastName;
     closeNameModal();
@@ -652,9 +727,7 @@ function closeNameModal() {
 
 document.addEventListener('click', (e) => {
   const modal = document.getElementById('nameModal');
-  if (e.target === modal) {
-    closeNameModal();
-  }
+  if (e.target === modal) closeNameModal();
 });
 
 document.addEventListener('keypress', (e) => {
@@ -667,7 +740,7 @@ let currentPhotoIndex = 0;
 let gamePhotos = [];
 
 function startGame() {
-  const game = gameData[currentGameCode];
+  const game = currentGameData || {};
   const entries = Object.values(game.entries || {});
 
   if (entries.length === 0) {
@@ -675,6 +748,7 @@ function startGame() {
     return;
   }
 
+  unsubscribeFromGame();
   gamePhotos = entries.sort(() => Math.random() - 0.5);
   currentPhotoIndex = 0;
 
@@ -682,7 +756,6 @@ function startGame() {
 
   loadPhotoRound();
   showScreen('gamePlayScreen');
-  if (pollInterval) clearInterval(pollInterval);
 }
 
 function loadPhotoRound() {
@@ -692,7 +765,7 @@ function loadPhotoRound() {
   }
 
   const photo = gamePhotos[currentPhotoIndex];
-  
+
   document.getElementById('gameImage').src = photo.photo;
   document.getElementById('gameName').textContent = '?';
   document.getElementById('revealedSection').style.display = 'none';
@@ -713,13 +786,12 @@ function selectGuess(name) {
 
 function revealAnswer() {
   const photo = gamePhotos[currentPhotoIndex];
-  
+
   const allEntriesOfThisPerson = gamePhotos.filter(e => e.fullName === photo.fullName);
   const submitters = [...new Set(allEntriesOfThisPerson.map(e => e.submittedBy))];
 
   const revealSection = document.getElementById('revealedSection');
   const revealAnswer = document.getElementById('revealAnswer');
-  
   revealAnswer.textContent = submitters.length > 1 ? submitters.join(' + ') : submitters[0];
   revealSection.style.display = 'block';
 
@@ -735,10 +807,11 @@ function nextPhoto() {
 
 function endGame() {
   if (confirm('End game?')) {
-    if (pollInterval) clearInterval(pollInterval);
+    unsubscribeFromGame();
     currentGameCode = null;
     currentPlayerName = null;
-    goToWelcome();
+    currentGameData = null;
+    showScreen('welcomeScreen');
   }
 }
 </script>
