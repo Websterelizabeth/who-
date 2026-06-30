@@ -8,7 +8,7 @@ An interactive web-based dating reveal game where friends submit photos, then pl
 ✅ **Photo Submissions** - Upload up to 20 photos per player
 ✅ **Interactive Gameplay** - Guess who submitted each photo
 ✅ **Smart Reveal** - Shows all players who submitted the same person
-✅ **No Backend** - All data stored locally in browser
+✅ **Firebase Backend** - Real-time multiplayer across any device
 ✅ **Mobile Friendly** - Works on phones, tablets, and desktop
 ✅ **Instant** - Deploy in minutes to Vercel
 
@@ -29,7 +29,61 @@ An interactive web-based dating reveal game where friends submit photos, then pl
 - Players guess who it is
 - Answer reveals: **"You + Henri + Csenga"** (all who submitted Jordan)
 
-## Quick Start
+## Firebase Setup (Required for Multiplayer)
+
+The game uses **Firebase Realtime Database** so players on different devices can join the same game in real time. You must create a free Firebase project and add your config to `index.html` before the game will work.
+
+### Step 1 — Create a Firebase Project
+
+1. Go to [https://console.firebase.google.com](https://console.firebase.google.com)
+2. Click **Add project**, give it a name (e.g. *dating-reveal*), follow the prompts
+3. On the left sidebar click **Build → Realtime Database → Create database**
+4. Choose any location and start in **test mode** (you can tighten rules later)
+
+### Step 2 — Register a Web App
+
+1. In your project's overview page, click the **`</>`** (Web) icon
+2. Give it a nickname and click **Register app**
+3. Copy the `firebaseConfig` object that appears — you'll need it next
+
+### Step 3 — Paste Config into index.html
+
+Open `index.html` and find the `firebaseConfig` block near the top of the `<script>` section. Replace the placeholder values with the ones from your Firebase project:
+
+```javascript
+const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "your-project.firebaseapp.com",
+  databaseURL: "https://your-project-default-rtdb.firebaseio.com",
+  projectId: "your-project",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abc123"
+};
+```
+
+### Step 4 — Set Database Rules
+
+In the Firebase console go to **Realtime Database → Rules** and set:
+
+```json
+{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}
+```
+
+Click **Publish**. This lets any player read/write game data without logging in.
+
+### Step 5 — Deploy
+
+Commit `index.html` with your config and push to GitHub. Vercel will automatically redeploy.
+
+---
+
+
 
 ### Deploy to Vercel (Recommended - Takes 2 minutes)
 
@@ -149,9 +203,13 @@ Change `20` to your desired limit.
 ## Troubleshooting
 
 **"Game not found" when joining**
-- Double-check the 6-character code
-- Make sure both players are using the same game code (uppercase)
-- Code is case-sensitive
+- Make sure you completed the Firebase setup and deployed the updated `index.html`
+- Double-check the 6-character code (it is case-insensitive; the app auto-uppercases it)
+- The game creator must have successfully created the game — check for any error alerts
+
+**"Firebase Not Configured" screen on load**
+- You haven't replaced the placeholder values in `firebaseConfig` inside `index.html`
+- Follow the Firebase Setup section above, then redeploy
 
 **Photos not uploading**
 - Ensure photos are JPG or PNG format
@@ -163,9 +221,8 @@ Change `20` to your desired limit.
 - Click "Start Game" button in lobby
 
 **Can't see other players' photos**
-- Photos only appear after they're submitted
-- Other players need to submit photos first
-- Refresh page to see updates
+- Photos sync in real time via Firebase — no refresh needed
+- Check the browser console for Firebase permission errors; verify your database rules are set to `true`
 
 ## Deployment Tips
 
