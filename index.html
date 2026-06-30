@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dating Reveal Game</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+    .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    h1 { font-size: 28px; margin-bottom: 8px; color: #333; }
+    h2 { font-size: 24px; margin-bottom: 12px; color: #333; }
+    .subtitle { color: #666; margin-bottom: 24px; font-size: 14px; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 24px; border-bottom: 2px solid #eee; flex-wrap: wrap; }
+    .tab-btn { background: none; border: none; padding: 12px 16px; cursor: pointer; color: #999; font-weight: 600; font-size: 14px; border-bottom: 3px solid transparent; transition: all 0.2s; }
+    .tab-btn:hover { color: #667eea; }
+    .tab-btn.active { color: #667eea; border-bottom-color: #667eea; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    label { display: block; margin: 16px 0 6px; font-weight: 600; font-size: 13px; color: #333; }
+    input, select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; }
+    input:focus, select:focus { outline: 2px solid #667eea; outline-offset: 0; }
+    .help { font-size: 12px; color: #999; margin: 4px 0 12px; }
+    button { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px; margin: 12px 0; transition: background 0.2s; }
+    button:hover { background: #5568d3; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .btn-secondary { background: #f0f0f0; color: #333; margin: 6px 0; width: auto; padding: 8px 16px; }
+    .btn-secondary:hover { background: #e0e0e0; }
+    .btn-danger { background: #dc3545; }
+    .btn-danger:hover { background: #c82333; }
+    .btn-large { padding: 16px; font-size: 16px; margin: 12px 0; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .header { background: #667eea; color: white; padding: 20px; margin: -30px -30px 20px; border-radius: 12px 12px 0 0; text-align: center; }
+    .header h1 { color: white; margin-bottom: 4px; }
+    .header p { font-size: 12px; opacity: 0.9; }
+    .action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+    .action-buttons button { margin: 0; }
+    .code-display { background: #f5f5f5; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0; }
+    .code-display .label { font-size: 12px; color: #666; margin-bottom: 8px; }
+    .code-display .code { font-family: monospace; font-size: 32px; font-weight: bold; color: #667eea; letter-spacing: 2px; }
+    .code-display .copy-btn { margin: 12px 0 0; }
+    .logged-in { background: #d4edda; padding: 12px; border-radius: 6px; margin-bottom: 16px; color: #155724; font-weight: 600; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+    .game-header { background: #e7f3ff; border: 1px solid #b3d9ff; color: #004085; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; }
+    .game-header .game-title { font-weight: 600; font-size: 16px; margin-bottom: 4px; }
+    .game-header .game-code { font-family: monospace; font-size: 14px; color: #667eea; }
+    .participants-list { background: #f5f5f5; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .participants-list h3 { font-size: 14px; margin-bottom: 12px; color: #333; }
+    .participant { background: white; padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; color: #333; border-left: 3px solid #667eea; display: flex; justify-content: space-between; align-items: center; }
+    .participant.joined { border-left-color: #28a745; }
+    .participant-status { font-size: 11px; color: #999; }
+    .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0; max-height: 500px; overflow-y: auto; }
+    .photo-item { position: relative; cursor: pointer; border-radius: 8px; overflow: hidden; aspect-ratio: 1; border: 2px solid #ddd; transition: all 0.2s; }
+    .photo-item:hover { border-color: #667eea; transform: scale(1.05); }
+    .photo-item img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-item.selected { border-color: #667eea; box-shadow: inset 0 0 0 2px #667eea; }
+    .photo-item .checkmark { position: absolute; top: 4px; right: 4px; background: #667eea; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+    .photo-counter { text-align: center; margin: 12px 0; font-size: 13px; color: #666; }
+    .entry-card { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-bottom: 12px; background: white; }
+    .entry-card-content { padding: 12px; }
+    .entry-card-img { width: 100%; height: 150px; background: linear-gradient(135deg, #667eea, #764ba2); margin-bottom: 12px; border-radius: 6px; overflow: hidden; }
+    .entry-card-img img { width: 100%; height: 100%; object-fit: cover; }
+    .entry-card-actions { display: flex; gap: 6px; }
+    .entry-card-actions button { padding: 8px 12px; font-size: 12px; margin: 0; width: auto; flex: 1; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px; margin-top: 16px; }
+    .grid-card { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+    .grid-card-img { width: 100%; height: 110px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; }
+    .grid-card-img img { width: 100%; height: 100%; object-fit: cover; }
+    .grid-card-name { padding: 8px; font-size: 11px; text-align: center; border-top: 1px solid #ddd; line-height: 1.3; }
+    .empty { text-align: center; color: #999; padding: 40px; }
+    .success { background: #d4edda; color: #155724; padding: 12px; border-radius: 6px; margin-bottom: 16px; display: none; font-size: 13px; animation: slideIn 0.3s ease; }
+    .success.show { display: block; }
+    .info-box { background: #e7f3ff; border: 1px solid #b3d9ff; color: #004085; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; line-height: 1.5; }
+    .loading { display: none; text-align: center; padding: 20px; }
+    .loading.show { display: block; }
+    .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #f0f0f0; border-top-color: #667eea; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; } }
+    .back-btn { background: #f0f0f0; color: #333; margin-bottom: 16px; }
+    .back-btn:hover { background: #e0e0e0; }
+    
+    /* GAME PLAY STYLES */
+    .game-play-container { display: flex; flex-direction: column; height: 100%; }
+    .game-image-container { flex: 1; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
+    .game-image-wrapper { position: relative; text-align: center; }
+    .game-image-name { font-size: 24px; font-weight: bold; color: #667eea; margin-bottom: 12px; min-height: 30px; }
+    .game-image-wrapper img { max-width: 100%; max-height: 350px; border-radius: 8px; }
+    .guess-section { margin-top: 20px; }
+    .guess-section h3 { font-size: 14px; color: #333; margin-bottom: 12px; font-weight: 600; }
+    .guess-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .guess-btn { padding: 12px; background: white; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; color: #333; transition: all 0.2s; }
+    .guess-btn:hover { border-color: #667eea; }
+    .guess-btn.selected { background: #667eea; color: white; border-color: #667eea; }
+    .reveal-section { background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 16px; text-align: center; margin-top: 20px; }
+    .reveal-section h3 { color: #856404; font-size: 16px; margin-bottom: 12px; }
+    .reveal-answer { font-size: 18px; font-weight: bold; color: #667eea; }
+    .controls-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px; }
+    .controls-bottom button { margin: 0; padding: 10px; font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- WELCOME SCREEN -->
+  <div id="welcomeScreen" class="screen active">
+    <div class="header">
+      <h1>💕 Dating Reveal</h1>
+      <p>Anonymous dating reveal game</p>
+    </div>
+    
+    <div class="action-buttons">
+      <button class="btn-large" onclick="goToCreateGame()">Create Game</button>
+      <button class="btn-large" onclick="goToJoinGame()">Join Game</button>
+    </div>
+  </div>
+
+  <!-- CREATE GAME SCREEN -->
+  <div id="createGameScreen" class="screen">
+    <button class="back-btn" onclick="goToWelcome()">← Back</button>
+    
+    <div class="header">
+      <h1>Create Game</h1>
+      <p>Start a new game and invite friends</p>
+    </div>
+
+    <label>Your name</label>
+    <input type="text" id="creatorName" placeholder="e.g., Liz">
+
+    <label>Game title</label>
+    <input type="text" id="gameTitle" placeholder="e.g., Who Did You Date?">
+
+    <button onclick="createGame()">Create Game</button>
+  </div>
+
+  <!-- JOIN GAME SCREEN -->
+  <div id="joinGameScreen" class="screen">
+    <button class="back-btn" onclick="goToWelcome()">← Back</button>
+    
+    <div class="header">
+      <h1>Join Game</h1>
+      <p>Enter game code to join</p>
+    </div>
+
+    <label>Your name</label>
+    <input type="text" id="playerName" placeholder="e.g., Henri">
+
+    <label>Game code (6 characters)</label>
+    <input type="text" id="gameCode" placeholder="e.g., ABC123" maxlength="6" style="text-transform: uppercase;">
+
+    <button onclick="joinGame()">Join Game</button>
+  </div>
+
+  <!-- GAME CODE SCREEN (After creating) -->
+  <div id="gameCodeScreen" class="screen">
+    <div class="header">
+      <h1>Game Created! 🎉</h1>
+      <p>Share this code with your friends</p>
+    </div>
+
+    <div class="code-display">
+      <div class="label">Game Code</div>
+      <div class="code" id="displayCode">ABC123</div>
+      <button class="copy-btn" onclick="copyGameCode()">Copy Code</button>
+    </div>
+
+    <div class="game-header">
+      <div class="game-title" id="codeGameTitle">Game Title</div>
+      <div class="game-code">Code: <span id="codeGameCode">ABC123</span></div>
+    </div>
+
+    <button onclick="startGameAfterCreate()">Continue to Game</button>
+  </div>
+
+  <!-- LOBBY SCREEN (Waiting for players) -->
+  <div id="lobbyScreen" class="screen">
+    <div class="game-header">
+      <div class="game-title" id="lobbyGameTitle">Game Title</div>
+      <div class="game-code">Code: <span id="lobbyGameCode">ABC123</span></div>
+    </div>
+
+    <div class="logged-in">
+      <span>👤 <strong id="lobbyPlayerName"></strong></span>
+      <button class="btn-secondary" style="width: 60px; padding: 4px;" onclick="exitGame()">Exit</button>
+    </div>
+
+    <div class="participants-list">
+      <h3>Joined Players</h3>
+      <div id="participantsList"></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="showTab(event, 'submit-photos')">Submit</button>
+      <button class="tab-btn" onclick="showTab(event, 'my-photos')">My Entries</button>
+      <button class="tab-btn" onclick="showTab(event, 'view-all')">All</button>
+    </div>
+
+    <!-- SUBMIT TAB -->
+    <div id="submit-photos" class="tab active">
+      <div class="info-box">
+        Upload up to 20 photos. Click photos to select/deselect, then submit.
+      </div>
+
+      <div class="success" id="successMsg">✓ Photos submitted!</div>
+
+      <label>Select photos (up to 20)</label>
+      <input type="file" id="photoInput" accept="image/*" multiple onchange="handlePhotoSelection()">
+      <p class="help">JPG, PNG (any size)</p>
+
+      <div class="photo-counter" id="photoCounter">0 photos selected</div>
+
+      <div class="photo-grid" id="photoGrid"></div>
+
+      <button onclick="submitPhotos()">Submit Photos</button>
+    </div>
+
+    <!-- MY PHOTOS TAB -->
+    <div id="my-photos" class="tab">
+      <h3 style="margin-bottom: 16px;">Your entries</h3>
+      <div id="mySubmissions">
+        <div class="empty">No submissions yet</div>
+      </div>
+    </div>
+
+    <!-- VIEW ALL TAB -->
+    <div id="view-all" class="tab">
+      <h3 style="margin-bottom: 16px;">All entries</h3>
+      <div id="grid" class="grid">
+        <div class="empty">No entries yet</div>
+      </div>
+    </div>
+
+    <button id="startGameBtn" onclick="startGame()" disabled style="margin-top: 20px;">Start Game</button>
+    <p class="help" id="gameHint">Waiting for participants to submit photos...</p>
+  </div>
+
+  <!-- GAME PLAY SCREEN -->
+  <div id="gamePlayScreen" class="screen">
+    <div class="game-header">
+      <div class="game-title" id="playGameTitle">Game Title</div>
+    </div>
+
+    <div class="game-image-wrapper">
+      <div class="game-image-name" id="gameName"></div>
+      <img id="gameImage" src="" alt="Game image" style="width: 100%; max-height: 300px; border-radius: 8px;">
+    </div>
+
+    <div class="guess-section">
+      <h3>Who is this?</h3>
+      <div class="guess-buttons" id="guessButtons"></div>
+    </div>
+
+    <div id="revealedSection" class="reveal-section" style="display: none;">
+      <h3>Answer:</h3>
+      <div class="reveal-answer" id="revealAnswer"></div>
+    </div>
+
+    <div class="controls-bottom">
+      <button id="guessBtn" onclick="revealAnswer()">Reveal Answer</button>
+      <button id="nextBtn" onclick="nextPhoto()" style="display: none;">Next →</button>
+    </div>
+
+    <button class="back-btn" onclick="endGame()" style="margin-top: 20px;">Exit Game</button>
+  </div>
+</div>
+
+<script>
+// UTILITY FUNCTIONS
+function generateGameCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+function showScreen(screenId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(screenId).classList.add('active');
+}
+
+function showTab(e, name) {
+  e.preventDefault();
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(name).classList.add('active');
+  e.target.classList.add('active');
+}
+
+// NAVIGATION
+function goToWelcome() {
+  showScreen('welcomeScreen');
+}
+
+function goToCreateGame() {
+  document.getElementById('creatorName').value = '';
+  document.getElementById('gameTitle').value = '';
+  showScreen('createGameScreen');
+}
+
+function goToJoinGame() {
+  document.getElementById('playerName').value = '';
+  document.getElementById('gameCode').value = '';
+  showScreen('joinGameScreen');
+}
+
+// CREATE/JOIN GAME
+function createGame() {
+  const creatorName = document.getElementById('creatorName').value.trim();
+  const gameTitle = document.getElementById('gameTitle').value.trim();
+
+  if (!creatorName || !gameTitle) {
+    alert('Fill in all fields');
+    return;
+  }
+
+  const gameCode = generateGameCode();
+  const gameId = 'game_' + gameCode;
+
+  localStorage.setItem(gameId + '_title', gameTitle);
+  localStorage.setItem(gameId + '_creator', creatorName);
+  localStorage.setItem(gameId + '_participants', JSON.stringify([creatorName]));
+  localStorage.setItem(gameId + '_entries', JSON.stringify([]));
+
+  localStorage.setItem('currentGameId', gameId);
+  localStorage.setItem('currentGameCode', gameCode);
+  localStorage.setItem('currentPlayer', creatorName);
+
+  document.getElementById('displayCode').textContent = gameCode;
+  document.getElementById('codeGameTitle').textContent = gameTitle;
+  document.getElementById('codeGameCode').textContent = gameCode;
+  showScreen('gameCodeScreen');
+}
+
+function joinGame() {
+  const playerName = document.getElementById('playerName').value.trim();
+  const gameCode = document.getElementById('gameCode').value.trim().toUpperCase();
+
+  if (!playerName || !gameCode) {
+    alert('Fill in all fields');
+    return;
+  }
+
+  const gameId = 'game_' + gameCode;
+  const gameTitle = localStorage.getItem(gameId + '_title');
+
+  if (!gameTitle) {
+    alert('Game not found. Check the code and try again.');
+    return;
+  }
+
+  let participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
+  if (!participants.includes(playerName)) {
+    participants.push(playerName);
+    localStorage.setItem(gameId + '_participants', JSON.stringify(participants));
+  }
+
+  localStorage.setItem('currentGameId', gameId);
+  localStorage.setItem('currentGameCode', gameCode);
+  localStorage.setItem('currentPlayer', playerName);
+
+  loadLobbyScreen();
+  showScreen('lobbyScreen');
+}
+
+function startGameAfterCreate() {
+  loadLobbyScreen();
+  showScreen('lobbyScreen');
+}
+
+function exitGame() {
+  if (confirm('Exit game?')) {
+    localStorage.removeItem('currentGameId');
+    localStorage.removeItem('currentGameCode');
+    localStorage.removeItem('currentPlayer');
+    goToWelcome();
+  }
+}
+
+function copyGameCode() {
+  const code = document.getElementById('displayCode').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = event.target;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => { btn.textContent = 'Copy Code'; }, 2000);
+  });
+}
+
+// LOBBY FUNCTIONS
+function loadLobbyScreen() {
+  const gameId = localStorage.getItem('currentGameId');
+  const gameCode = localStorage.getItem('currentGameCode');
+  const playerName = localStorage.getItem('currentPlayer');
+  const gameTitle = localStorage.getItem(gameId + '_title');
+  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
+
+  document.getElementById('lobbyGameTitle').textContent = gameTitle;
+  document.getElementById('lobbyGameCode').textContent = gameCode;
+  document.getElementById('lobbyPlayerName').textContent = playerName;
+
+  updateParticipantsList();
+  updateMySubmissions();
+  updateAllGrid();
+  updateStartButton();
+}
+
+function updateParticipantsList() {
+  const gameId = localStorage.getItem('currentGameId');
+  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
+  const container = document.getElementById('participantsList');
+
+  container.innerHTML = participants.map(p => `
+    <div class="participant joined">
+      <span>${p}</span>
+      <span class="participant-status">✓ Joined</span>
+    </div>
+  `).join('');
+}
+
+function updateStartButton() {
+  const gameId = localStorage.getItem('currentGameId');
+  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
+  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
+  const startBtn = document.getElementById('startGameBtn');
+  const hint = document.getElementById('gameHint');
+
+  if (entries.length > 0 && participants.length > 0) {
+    startBtn.disabled = false;
+    hint.textContent = `Ready! ${entries.length} photo${entries.length > 1 ? 's' : ''} from ${participants.length} player${participants.length > 1 ? 's' : ''}`;
+  } else {
+    startBtn.disabled = true;
+    hint.textContent = 'Waiting for participants to submit photos...';
+  }
+}
+
+// PHOTO SUBMISSION
+let selectedPhotos = [];
+
+function handlePhotoSelection() {
+  const files = document.getElementById('photoInput').files;
+  selectedPhotos = [];
+
+  const container = document.getElementById('photoGrid');
+  container.innerHTML = '';
+
+  Array.from(files).slice(0, 20).forEach((file, idx) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const div = document.createElement('div');
+      div.className = 'photo-item selected';
+      div.innerHTML = `<img src="${e.target.result}" alt="Photo ${idx + 1}"><div class="checkmark">✓</div>`;
+      div.onclick = () => togglePhotoSelection(div);
+      div.dataset.data = e.target.result;
+      container.appendChild(div);
+
+      updatePhotoCounter();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  document.getElementById('photoCounter').textContent = `0 of ${Math.min(files.length, 20)} selected`;
+}
+
+function togglePhotoSelection(element) {
+  element.classList.toggle('selected');
+  updatePhotoCounter();
+}
+
+function updatePhotoCounter() {
+  const selected = document.querySelectorAll('.photo-item.selected').length;
+  document.getElementById('photoCounter').textContent = `${selected} photo${selected !== 1 ? 's' : ''} selected`;
+}
+
+function submitPhotos() {
+  const gameId = localStorage.getItem('currentGameId');
+  const playerName = localStorage.getItem('currentPlayer');
+  const selected = document.querySelectorAll('.photo-item.selected');
+
+  if (selected.length === 0) {
+    alert('Select at least one photo');
+    return;
+  }
+
+  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
+
+  selected.forEach((item) => {
+    entries.push({
+      id: Date.now() + Math.random(),
+      submittedBy: playerName,
+      photo: item.dataset.data
+    });
+  });
+
+  localStorage.setItem(gameId + '_entries', JSON.stringify(entries));
+
+  document.getElementById('photoInput').value = '';
+  document.getElementById('photoGrid').innerHTML = '';
+  updatePhotoCounter();
+  document.getElementById('successMsg').classList.add('show');
+  setTimeout(() => {
+    document.getElementById('successMsg').classList.remove('show');
+  }, 3000);
+
+  updateMySubmissions();
+  updateAllGrid();
+  updateStartButton();
+}
+
+function updateMySubmissions() {
+  const gameId = localStorage.getItem('currentGameId');
+  const playerName = localStorage.getItem('currentPlayer');
+  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
+  const myEntries = entries.filter(e => e.submittedBy === playerName);
+  const container = document.getElementById('mySubmissions');
+
+  if (myEntries.length === 0) {
+    container.innerHTML = '<div class="empty">No submissions yet</div>';
+    return;
+  }
+
+  container.innerHTML = myEntries.map(e => `
+    <div class="entry-card">
+      <div class="entry-card-content">
+        <div class="entry-card-img"><img src="${e.photo}" alt="Photo"></div>
+        <div class="entry-card-actions">
+          <button class="btn-danger" onclick="deleteEntry('${e.id}')">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function deleteEntry(id) {
+  if (!confirm('Delete this photo?')) return;
+  
+  const gameId = localStorage.getItem('currentGameId');
+  let entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
+  entries = entries.filter(e => e.id != id);
+  localStorage.setItem(gameId + '_entries', JSON.stringify(entries));
+
+  updateMySubmissions();
+  updateAllGrid();
+  updateStartButton();
+}
+
+function updateAllGrid() {
+  const gameId = localStorage.getItem('currentGameId');
+  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
+  const grid = document.getElementById('grid');
+
+  if (entries.length === 0) {
+    grid.innerHTML = '<div class="empty" style="grid-column: 1/-1;">No entries yet</div>';
+    return;
+  }
+
+  grid.innerHTML = entries.map(e => `
+    <div class="grid-card">
+      <div class="grid-card-img"><img src="${e.photo}" alt="Photo"></div>
+      <div class="grid-card-name">by ${e.submittedBy}</div>
+    </div>
+  `).join('');
+}
+
+// GAME PLAY
+let currentPhotoIndex = 0;
+let gamePhotos = [];
+
+function startGame() {
+  const gameId = localStorage.getItem('currentGameId');
+  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
+  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
+  const gameTitle = localStorage.getItem(gameId + '_title');
+
+  if (entries.length === 0) {
+    alert('No photos submitted yet');
+    return;
+  }
+
+  // Shuffle entries
+  gamePhotos = [...entries].sort(() => Math.random() - 0.5);
+  currentPhotoIndex = 0;
+
+  document.getElementById('playGameTitle').textContent = gameTitle;
+
+  // Load first photo
+  loadPhotoRound(participants);
+  showScreen('gamePlayScreen');
+}
+
+function loadPhotoRound(participants) {
+  if (currentPhotoIndex >= gamePhotos.length) {
+    endGame();
+    return;
+  }
+
+  const photo = gamePhotos[currentPhotoIndex];
+  
+  document.getElementById('gameImage').src = photo.photo;
+  document.getElementById('gameName').textContent = '?';
+  document.getElementById('revealedSection').style.display = 'none';
+  document.getElementById('guessBtn').style.display = 'block';
+  document.getElementById('nextBtn').style.display = 'none';
+
+  // Create guess buttons
+  const guessContainer = document.getElementById('guessButtons');
+  guessContainer.innerHTML = participants.map(p => `
+    <button class="guess-btn" onclick="selectGuess('${p}')" data-name="${p}">${p}</button>
+  `).join('');
+}
+
+function selectGuess(name) {
+  document.querySelectorAll('.guess-btn').forEach(btn => btn.classList.remove('selected'));
+  document.querySelector(`[data-name="${name}"]`).classList.add('selected');
+}
+
+function revealAnswer() {
+  const photo = gamePhotos[currentPhotoIndex];
+  const gameId = localStorage.getItem('currentGameId');
+  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
+
+  // Find all people who submitted photos with this name
+  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
+  const allPhotosByName = entries.filter(e => e.submittedBy === photo.submittedBy);
+  const whoSubmittedThis = photo.submittedBy;
+
+  // Find all participants who submitted ANY photo with this submitter's name
+  // Group by submitter name to find all who submitted this person
+  const allSubmittersOfThisPerson = entries
+    .filter(e => entries.some(entry => entry.submittedBy === e.submittedBy && entry.submittedBy === whoSubmittedThis))
+    .map(e => e.submittedBy);
+  
+  // Get unique submitters
+  const uniqueSubmitters = [...new Set(allSubmittersOfThisPerson)];
+
+  const revealSection = document.getElementById('revealedSection');
+  const revealAnswer = document.getElementById('revealAnswer');
+  
+  revealAnswer.textContent = uniqueSubmitters.length > 1 ? uniqueSubmitters.join(' + ') : whoSubmittedThis;
+  revealSection.style.display = 'block';
+
+  document.getElementById('guessBtn').style.display = 'none';
+  document.getElementById('nextBtn').style.display = 'block';
+  document.getElementById('gameName').textContent = whoSubmittedThis;
+}
+
+function nextPhoto() {
+  const gameId = localStorage.getItem('currentGameId');
+  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
+  
+  currentPhotoIndex++;
+  loadPhotoRound(participants);
+}
+
+function endGame() {
+  if (confirm('End game?')) {
+    localStorage.removeItem('currentGameId');
+    localStorage.removeItem('currentGameCode');
+    localStorage.removeItem('currentPlayer');
+    goToWelcome();
+  }
+}
+
+// AUTO-LOAD EXISTING GAME
+const gameId = localStorage.getItem('currentGameId');
+if (gameId) {
+  loadLobbyScreen();
+  showScreen('lobbyScreen');
+}
+</script>
+
+</body>
+</html>
