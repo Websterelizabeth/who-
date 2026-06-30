@@ -189,6 +189,12 @@
       <div class="game-code">Code: <span id="lobbyGameCode">ABC123</span></div>
     </div>
 
+    <div id="hostShareBox" class="info-box" style="display:none;">
+      <strong>Host share link</strong>
+      <input type="text" id="hostShareLink" readonly style="margin-top:8px;">
+      <button onclick="copyHostShareLink()" style="background:#28a745;">🔗 Copy Share Link</button>
+    </div>
+
     <div class="logged-in">
       <span>👤 <strong id="lobbyPlayerName"></strong></span>
       <button class="btn-secondary" style="width: 60px; padding: 4px;" onclick="exitGame()">Exit</button>
@@ -564,12 +570,23 @@ function copyGameCode() {
 }
 
 function copyGameLink() {
-  const code = document.getElementById('displayCode').textContent;
+  const code = (currentGameCode || document.getElementById('displayCode').textContent || '').trim().toUpperCase();
   const url = `${location.origin}${location.pathname}?join=${code}`;
   navigator.clipboard.writeText(url).then(() => {
     const btn = event.target;
     btn.textContent = '✓ Link Copied!';
     setTimeout(() => { btn.textContent = '🔗 Share Link'; }, 2000);
+  }).catch(() => prompt('Share this link with your friends:', url));
+}
+
+function copyHostShareLink() {
+  const input = document.getElementById('hostShareLink');
+  const url = (input.value || '').trim();
+  if (!url) return;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = event.target;
+    btn.textContent = '✓ Link Copied!';
+    setTimeout(() => { btn.textContent = '🔗 Copy Share Link'; }, 2000);
   }).catch(() => prompt('Share this link with your friends:', url));
 }
 
@@ -580,6 +597,18 @@ function loadLobbyScreen() {
   document.getElementById('lobbyGameTitle').textContent = game.title;
   document.getElementById('lobbyGameCode').textContent = currentGameCode;
   document.getElementById('lobbyPlayerName').textContent = currentPlayerName;
+
+  const hostShareBox = document.getElementById('hostShareBox');
+  const hostShareLink = document.getElementById('hostShareLink');
+  const isHost = game && game.creator === currentPlayerName;
+  if (isHost) {
+    hostShareLink.value = `${location.origin}${location.pathname}?join=${currentGameCode}`;
+    hostShareBox.style.display = 'block';
+  } else {
+    hostShareLink.value = '';
+    hostShareBox.style.display = 'none';
+  }
+
   updateParticipantsList();
   updateMySubmissions();
   updateAllGrid();
