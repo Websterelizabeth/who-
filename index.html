@@ -107,7 +107,9 @@
     .modal { background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
     .modal h2 { margin-bottom: 16px; color: #333; }
     .modal-close { float: right; background: #f0f0f0; color: #333; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-    .modal-name-input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+    .modal-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .modal-inputs input { margin: 0; width: 100%; }
+    .modal-inputs label { margin: 0 0 6px 0; }
     .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .modal-actions button { margin: 0; padding: 10px; font-size: 12px; }
   </style>
@@ -211,7 +213,7 @@
     <!-- SUBMIT TAB -->
     <div id="submit-photos" class="tab active">
       <div class="info-box">
-        Upload photos and name the person in each photo. Up to 20 photos per player.
+        Upload photos and enter the person's FULL NAME (First & Last). Up to 20 photos per player.
       </div>
 
       <div class="success" id="successMsg">✓ Photos submitted!</div>
@@ -281,7 +283,17 @@
 <div id="nameModal" class="modal-overlay">
   <div class="modal">
     <h2>Who is this person?</h2>
-    <input type="text" id="personName" class="modal-name-input" placeholder="Enter their name" autocomplete="off">
+    <p style="font-size: 12px; color: #666; margin-bottom: 16px;">Enter their FULL NAME (first and last name)</p>
+    <div class="modal-inputs">
+      <div>
+        <label>First Name</label>
+        <input type="text" id="firstName" placeholder="First name" autocomplete="off">
+      </div>
+      <div>
+        <label>Last Name</label>
+        <input type="text" id="lastName" placeholder="Last name" autocomplete="off">
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="cancelNameInput()" style="margin: 0;">Cancel</button>
       <button onclick="confirmNameInput()" style="margin: 0;">Confirm</button>
@@ -478,7 +490,8 @@ function handlePhotoSelection() {
       div.innerHTML = `<img src="${e.target.result}" alt="Photo ${idx + 1}"><div class="checkmark">✓</div>`;
       div.onclick = () => togglePhotoSelection(div);
       div.dataset.data = e.target.result;
-      div.dataset.name = ''; // Will be filled in by modal
+      div.dataset.firstName = '';
+      div.dataset.lastName = '';
       container.appendChild(div);
 
       updatePhotoCounter();
@@ -510,13 +523,13 @@ function submitPhotos() {
   // Check if all selected photos have names
   let allNamed = true;
   selected.forEach((item) => {
-    if (!item.dataset.name || item.dataset.name.trim() === '') {
+    if (!item.dataset.firstName || !item.dataset.lastName || item.dataset.firstName.trim() === '' || item.dataset.lastName.trim() === '') {
       allNamed = false;
     }
   });
 
   if (!allNamed) {
-    alert('Please enter a name for each photo');
+    alert('Please enter full name (first and last) for each photo');
     return;
   }
 
@@ -525,10 +538,13 @@ function submitPhotos() {
   const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
 
   selected.forEach((item) => {
+    const fullName = item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim();
     entries.push({
       id: Date.now() + Math.random(),
       submittedBy: playerName,
-      personName: item.dataset.name.trim(),
+      firstName: item.dataset.firstName.trim(),
+      lastName: item.dataset.lastName.trim(),
+      fullName: fullName,
       photo: item.dataset.data
     });
   });
@@ -564,7 +580,7 @@ function updateMySubmissions() {
     <div class="entry-card">
       <div class="entry-card-content">
         <div class="entry-card-img"><img src="${e.photo}" alt="Photo"></div>
-        <div class="entry-card-name">${e.personName}</div>
+        <div class="entry-card-name">${e.fullName}</div>
         <div class="entry-card-actions">
           <button class="btn-danger" onclick="deleteEntry('${e.id}')">Delete</button>
         </div>
@@ -600,7 +616,7 @@ function updateAllGrid() {
     <div class="grid-card">
       <div class="grid-card-img"><img src="${e.photo}" alt="Photo"></div>
       <div class="grid-card-info">
-        <div class="grid-card-person">${e.personName}</div>
+        <div class="grid-card-person">${e.fullName}</div>
         <div class="grid-card-by">by ${e.submittedBy}</div>
       </div>
     </div>
@@ -610,19 +626,24 @@ function updateAllGrid() {
 // MODAL FUNCTIONS
 function openNameModal(photoElement) {
   currentPhotoForName = photoElement;
-  document.getElementById('personName').value = photoElement.dataset.name || '';
+  document.getElementById('firstName').value = photoElement.dataset.firstName || '';
+  document.getElementById('lastName').value = photoElement.dataset.lastName || '';
   document.getElementById('nameModal').classList.add('show');
-  document.getElementById('personName').focus();
+  document.getElementById('firstName').focus();
 }
 
 function confirmNameInput() {
   if (currentPhotoForName) {
-    const name = document.getElementById('personName').value.trim();
-    if (!name) {
-      alert('Please enter a name');
+    const firstName = document.getElementById('firstName').value.trim();
+    const lastName = document.getElementById('lastName').value.trim();
+    
+    if (!firstName || !lastName) {
+      alert('Please enter both first and last name');
       return;
     }
-    currentPhotoForName.dataset.name = name;
+    
+    currentPhotoForName.dataset.firstName = firstName;
+    currentPhotoForName.dataset.lastName = lastName;
     closeNameModal();
   }
 }
@@ -707,9 +728,9 @@ function revealAnswer() {
   const photo = gamePhotos[currentPhotoIndex];
   const gameId = localStorage.getItem('currentGameId');
   
-  // Find all entries with the same person name
+  // Find all entries with the exact same full name
   const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
-  const allEntriesOfThisPerson = entries.filter(e => e.personName === photo.personName);
+  const allEntriesOfThisPerson = entries.filter(e => e.fullName === photo.fullName);
   
   // Get unique submitters who submitted photos of this person
   const submitters = [...new Set(allEntriesOfThisPerson.map(e => e.submittedBy))];
@@ -722,7 +743,7 @@ function revealAnswer() {
 
   document.getElementById('guessBtn').style.display = 'none';
   document.getElementById('nextBtn').style.display = 'block';
-  document.getElementById('gameName').textContent = photo.personName;
+  document.getElementById('gameName').textContent = photo.fullName;
 }
 
 function nextPhoto() {
