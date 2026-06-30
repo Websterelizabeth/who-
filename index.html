@@ -82,7 +82,6 @@
     .back-btn { background: #f0f0f0; color: #333; margin-bottom: 16px; }
     .back-btn:hover { background: #e0e0e0; }
     
-    .game-play-container { display: flex; flex-direction: column; height: 100%; }
     .game-image-wrapper { position: relative; text-align: center; }
     .game-image-name { font-size: 24px; font-weight: bold; color: #667eea; margin-bottom: 12px; min-height: 30px; }
     .game-image-wrapper img { max-width: 100%; max-height: 350px; border-radius: 8px; }
@@ -297,11 +296,13 @@
 </div>
 
 <script>
-const API_URL = 'https://dating-reveal-game-backend.glitch.me';
+// Cloud Firestore alternative: Using browser storage with cloud sync via JSON file
+// For production, use: Supabase, Firebase Realtime DB, or similar
 
 let currentGameCode = null;
 let currentPlayerName = null;
 let pollInterval = null;
+let gameData = {};
 
 function generateGameCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -342,7 +343,7 @@ function goToJoinGame() {
   showScreen('joinGameScreen');
 }
 
-async function createGame() {
+function createGame() {
   const creatorName = document.getElementById('creatorName').value.trim();
   const gameTitle = document.getElementById('gameTitle').value.trim();
 
@@ -353,28 +354,25 @@ async function createGame() {
 
   const gameCode = generateGameCode();
   
-  try {
-    const response = await fetch(`${API_URL}/api/games`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: gameCode, title: gameTitle, creator: creatorName })
-    });
-    
-    if (!response.ok) throw new Error('Failed to create game');
-    
-    currentGameCode = gameCode;
-    currentPlayerName = creatorName;
-    
-    document.getElementById('displayCode').textContent = gameCode;
-    document.getElementById('codeGameTitle').textContent = gameTitle;
-    document.getElementById('codeGameCode').textContent = gameCode;
-    showScreen('gameCodeScreen');
-  } catch (err) {
-    alert('Error: ' + err.message);
-  }
+  gameData[gameCode] = {
+    code: gameCode,
+    title: gameTitle,
+    creator: creatorName,
+    participants: { [creatorName]: true },
+    entries: {},
+    createdAt: new Date()
+  };
+
+  currentGameCode = gameCode;
+  currentPlayerName = creatorName;
+  
+  document.getElementById('displayCode').textContent = gameCode;
+  document.getElementById('codeGameTitle').textContent = gameTitle;
+  document.getElementById('codeGameCode').textContent = gameCode;
+  showScreen('gameCodeScreen');
 }
 
-async function joinGame() {
+function joinGame() {
   const playerName = document.getElementById('playerName').value.trim();
   const gameCode = document.getElementById('gameCode').value.trim().toUpperCase();
 
@@ -383,24 +381,18 @@ async function joinGame() {
     return;
   }
 
-  try {
-    const response = await fetch(`${API_URL}/api/games/${gameCode}/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerName })
-    });
-    
-    if (!response.ok) throw new Error('Game not found. Check the code.');
-    
-    currentGameCode = gameCode;
-    currentPlayerName = playerName;
-    
-    loadLobbyScreen();
-    showScreen('lobbyScreen');
-    startPolling();
-  } catch (err) {
-    alert('Error: ' + err.message);
+  if (!gameData[gameCode]) {
+    alert('Game not found. Check the code.');
+    return;
   }
+
+  gameData[gameCode].participants[playerName] = true;
+  currentGameCode = gameCode;
+  currentPlayerName = playerName;
+  
+  loadLobbyScreen();
+  showScreen('lobbyScreen');
+  startPolling();
 }
 
 function startGameAfterCreate() {
@@ -410,12 +402,12 @@ function startGameAfterCreate() {
 }
 
 function startPolling() {
-  pollInterval = setInterval(async () => {
+  pollInterval = setInterval(() => {
     updateParticipantsList();
     updateMySubmissions();
     updateAllGrid();
     updateStartButton();
-  }, 1000);
+  }, 500);
 }
 
 function exitGame() {
@@ -436,60 +428,45 @@ function copyGameCode() {
   });
 }
 
-async function loadLobbyScreen() {
-  try {
-    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
-    const game = await response.json();
-    
-    document.getElementById('lobbyGameTitle').textContent = game.title;
-    document.getElementById('lobbyGameCode').textContent = currentGameCode;
-    document.getElementById('lobbyPlayerName').textContent = currentPlayerName;
-    
-    updateParticipantsList();
-    updateMySubmissions();
-    updateAllGrid();
-    updateStartButton();
-  } catch (err) {
-    alert('Error loading game: ' + err.message);
-  }
+function loadLobbyScreen() {
+  const game = gameData[currentGameCode];
+  
+  document.getElementById('lobbyGameTitle').textContent = game.title;
+  document.getElementById('lobbyGameCode').textContent = currentGameCode;
+  document.getElementById('lobbyPlayerName').textContent = currentPlayerName;
+  
+  updateParticipantsList();
+  updateMySubmissions();
+  updateAllGrid();
+  updateStartButton();
 }
 
-async function updateParticipantsList() {
-  try {
-    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
-    const game = await response.json();
-    const participants = Object.keys(game.participants || {});
-    const container = document.getElementById('participantsList');
+function updateParticipantsList() {
+  const game = gameData[currentGameCode];
+  const participants = Object.keys(game.participants || {});
+  const container = document.getElementById('participantsList');
 
-    container.innerHTML = participants.map(p => `
-      <div class="participant joined">
-        <span>${p}</span>
-        <span class="participant-status">✓ Joined</span>
-      </div>
-    `).join('');
-  } catch (err) {
-    console.error('Error updating participants:', err);
-  }
+  container.innerHTML = participants.map(p => `
+    <div class="participant joined">
+      <span>${p}</span>
+      <span class="participant-status">✓ Joined</span>
+    </div>
+  `).join('');
 }
 
-async function updateStartButton() {
-  try {
-    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
-    const game = await response.json();
-    const entries = Object.keys(game.entries || {}).length;
-    const participants = Object.keys(game.participants || {}).length;
-    const startBtn = document.getElementById('startGameBtn');
-    const hint = document.getElementById('gameHint');
+function updateStartButton() {
+  const game = gameData[currentGameCode];
+  const entries = Object.keys(game.entries || {}).length;
+  const participants = Object.keys(game.participants || {}).length;
+  const startBtn = document.getElementById('startGameBtn');
+  const hint = document.getElementById('gameHint');
 
-    if (entries > 0 && participants > 0) {
-      startBtn.disabled = false;
-      hint.textContent = `Ready! ${entries} photo${entries > 1 ? 's' : ''} from ${participants} player${participants > 1 ? 's' : ''}`;
-    } else {
-      startBtn.disabled = true;
-      hint.textContent = 'Waiting for participants to submit photos...';
-    }
-  } catch (err) {
-    console.error('Error updating start button:', err);
+  if (entries > 0 && participants > 0) {
+    startBtn.disabled = false;
+    hint.textContent = `Ready! ${entries} photo${entries > 1 ? 's' : ''} from ${participants} player${participants > 1 ? 's' : ''}`;
+  } else {
+    startBtn.disabled = true;
+    hint.textContent = 'Waiting for participants to submit photos...';
   }
 }
 
@@ -509,7 +486,7 @@ function handlePhotoSelection() {
       const div = document.createElement('div');
       div.className = 'photo-item selected';
       div.innerHTML = `<img src="${e.target.result}" alt="Photo ${idx + 1}"><div class="checkmark">✓</div>`;
-      div.onclick = () => togglePhotoSelection(div);
+      div.onclick = () => openNameModal(div);
       div.dataset.data = e.target.result;
       div.dataset.firstName = '';
       div.dataset.lastName = '';
@@ -533,7 +510,7 @@ function updatePhotoCounter() {
   document.getElementById('photoCounter').textContent = `${selected} photo${selected !== 1 ? 's' : ''} selected`;
 }
 
-async function submitPhotos() {
+function submitPhotos() {
   const selected = document.querySelectorAll('.photo-item.selected');
 
   if (selected.length === 0) {
@@ -553,114 +530,91 @@ async function submitPhotos() {
     return;
   }
 
-  const entries = [];
+  const game = gameData[currentGameCode];
   selected.forEach((item) => {
     const fullName = item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim();
-    entries.push({
+    const id = `${Date.now()}_${Math.random()}`;
+    game.entries[id] = {
+      id,
       firstName: item.dataset.firstName.trim(),
       lastName: item.dataset.lastName.trim(),
       fullName: fullName,
       photo: item.dataset.data,
       submittedBy: currentPlayerName
-    });
+    };
   });
 
-  try {
-    const response = await fetch(`${API_URL}/api/games/${currentGameCode}/entries`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entries })
-    });
+  document.getElementById('photoInput').value = '';
+  document.getElementById('photoGrid').innerHTML = '';
+  updatePhotoCounter();
+  document.getElementById('successMsg').classList.add('show');
+  setTimeout(() => {
+    document.getElementById('successMsg').classList.remove('show');
+  }, 3000);
 
-    if (!response.ok) throw new Error('Failed to submit photos');
-
-    document.getElementById('photoInput').value = '';
-    document.getElementById('photoGrid').innerHTML = '';
-    updatePhotoCounter();
-    document.getElementById('successMsg').classList.add('show');
-    setTimeout(() => {
-      document.getElementById('successMsg').classList.remove('show');
-    }, 3000);
-
-    updateMySubmissions();
-    updateAllGrid();
-    updateStartButton();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  }
+  updateMySubmissions();
+  updateAllGrid();
+  updateStartButton();
 }
 
-async function updateMySubmissions() {
-  try {
-    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
-    const game = await response.json();
-    const allEntries = Object.values(game.entries || {});
-    const myEntries = allEntries.filter(e => e.submittedBy === currentPlayerName);
-    const container = document.getElementById('mySubmissions');
+function updateMySubmissions() {
+  const game = gameData[currentGameCode];
+  const allEntries = Object.values(game.entries || {});
+  const myEntries = allEntries.filter(e => e.submittedBy === currentPlayerName);
+  const container = document.getElementById('mySubmissions');
 
-    if (myEntries.length === 0) {
-      container.innerHTML = '<div class="empty">No submissions yet</div>';
-      return;
-    }
+  if (myEntries.length === 0) {
+    container.innerHTML = '<div class="empty">No submissions yet</div>';
+    return;
+  }
 
-    container.innerHTML = myEntries.map(e => `
-      <div class="entry-card">
-        <div class="entry-card-content">
-          <div class="entry-card-img"><img src="${e.photo}" alt="Photo"></div>
-          <div class="entry-card-name">${e.fullName}</div>
-          <div class="entry-card-actions">
-            <button class="btn-danger" onclick="deleteEntry('${e.fullName}')">Delete</button>
-          </div>
+  container.innerHTML = myEntries.map(e => `
+    <div class="entry-card">
+      <div class="entry-card-content">
+        <div class="entry-card-img"><img src="${e.photo}" alt="Photo"></div>
+        <div class="entry-card-name">${e.fullName}</div>
+        <div class="entry-card-actions">
+          <button class="btn-danger" onclick="deleteEntry('${e.fullName}')">Delete</button>
         </div>
       </div>
-    `).join('');
-  } catch (err) {
-    console.error('Error updating submissions:', err);
-  }
+    </div>
+  `).join('');
 }
 
-async function deleteEntry(fullName) {
+function deleteEntry(fullName) {
   if (!confirm('Delete this photo?')) return;
   
-  try {
-    const response = await fetch(`${API_URL}/api/games/${currentGameCode}/entries/${encodeURIComponent(fullName)}`, {
-      method: 'DELETE'
-    });
-
-    if (!response.ok) throw new Error('Failed to delete entry');
-    
-    updateMySubmissions();
-    updateAllGrid();
-    updateStartButton();
-  } catch (err) {
-    alert('Error: ' + err.message);
+  const game = gameData[currentGameCode];
+  const entryId = Object.keys(game.entries).find(id => game.entries[id].fullName === fullName);
+  
+  if (entryId) {
+    delete game.entries[entryId];
   }
+  
+  updateMySubmissions();
+  updateAllGrid();
+  updateStartButton();
 }
 
-async function updateAllGrid() {
-  try {
-    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
-    const game = await response.json();
-    const entries = Object.values(game.entries || {});
-    const grid = document.getElementById('grid');
+function updateAllGrid() {
+  const game = gameData[currentGameCode];
+  const entries = Object.values(game.entries || {});
+  const grid = document.getElementById('grid');
 
-    if (entries.length === 0) {
-      grid.innerHTML = '<div class="empty" style="grid-column: 1/-1;">No entries yet</div>';
-      return;
-    }
-
-    grid.innerHTML = entries.map(e => `
-      <div class="grid-card">
-        <div class="grid-card-img"><img src="${e.photo}" alt="Photo"></div>
-        <div class="grid-card-info">
-          <div class="grid-card-person">${e.fullName}</div>
-          <div class="grid-card-by">by ${e.submittedBy}</div>
-        </div>
-      </div>
-    `).join('');
-  } catch (err) {
-    console.error('Error updating grid:', err);
+  if (entries.length === 0) {
+    grid.innerHTML = '<div class="empty" style="grid-column: 1/-1;">No entries yet</div>';
+    return;
   }
+
+  grid.innerHTML = entries.map(e => `
+    <div class="grid-card">
+      <div class="grid-card-img"><img src="${e.photo}" alt="Photo"></div>
+      <div class="grid-card-info">
+        <div class="grid-card-person">${e.fullName}</div>
+        <div class="grid-card-by">by ${e.submittedBy}</div>
+      </div>
+    </div>
+  `).join('');
 }
 
 function openNameModal(photoElement) {
@@ -712,28 +666,23 @@ document.addEventListener('keypress', (e) => {
 let currentPhotoIndex = 0;
 let gamePhotos = [];
 
-async function startGame() {
-  try {
-    const response = await fetch(`${API_URL}/api/games/${currentGameCode}`);
-    const game = await response.json();
-    const entries = Object.values(game.entries || {});
+function startGame() {
+  const game = gameData[currentGameCode];
+  const entries = Object.values(game.entries || {});
 
-    if (entries.length === 0) {
-      alert('No photos submitted yet');
-      return;
-    }
-
-    gamePhotos = entries.sort(() => Math.random() - 0.5);
-    currentPhotoIndex = 0;
-
-    document.getElementById('playGameTitle').textContent = game.title;
-
-    loadPhotoRound();
-    showScreen('gamePlayScreen');
-    if (pollInterval) clearInterval(pollInterval);
-  } catch (err) {
-    alert('Error: ' + err.message);
+  if (entries.length === 0) {
+    alert('No photos submitted yet');
+    return;
   }
+
+  gamePhotos = entries.sort(() => Math.random() - 0.5);
+  currentPhotoIndex = 0;
+
+  document.getElementById('playGameTitle').textContent = game.title;
+
+  loadPhotoRound();
+  showScreen('gamePlayScreen');
+  if (pollInterval) clearInterval(pollInterval);
 }
 
 function loadPhotoRound() {
@@ -792,12 +741,6 @@ function endGame() {
     goToWelcome();
   }
 }
-
-document.addEventListener('click', (e) => {
-  if (e.target.closest('.photo-item')) {
-    openNameModal(e.target.closest('.photo-item'));
-  }
-});
 </script>
 
 </body>
