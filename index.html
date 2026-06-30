@@ -348,31 +348,83 @@ function _broadcastGame(code) {
 // ==================== API LAYER ====================
 
 async function _apiCreate(code, title, creator) {
-  const res = await fetch(API_BASE, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, title, creator }),
-  });
-  if (!res.ok) throw new Error(`Create failed (${res.status})`);
-  return res.json();
+  try {
+    const res = await fetch(API_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, title, creator }),
+    });
+    if (!res.ok) throw await _apiHttpError('Create', res);
+    return res.json();
+  } catch (err) {
+    throw _normalizeApiError('Create', err);
+  }
 }
 
 async function _apiGet(code, metaOnly) {
-  const url = metaOnly ? `${API_BASE}?code=${code}&meta=1` : `${API_BASE}?code=${code}`;
-  const res = await fetch(url);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Get failed (${res.status})`);
-  return res.json();
+  const op = metaOnly ? 'Get metadata' : 'Get';
+  try {
+    const url = metaOnly ? `${API_BASE}?code=${code}&meta=1` : `${API_BASE}?code=${code}`;
+    const res = await fetch(url);
+    if (res.status === 404) return null;
+    if (!res.ok) throw await _apiHttpError(op, res);
+    return res.json();
+  } catch (err) {
+    throw _normalizeApiError(op, err);
+  }
 }
 
 async function _apiPatch(code, patch) {
-  const res = await fetch(`${API_BASE}?code=${code}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  });
-  if (!res.ok) throw new Error(`Update failed (${res.status})`);
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}?code=${code}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw await _apiHttpError('Update', res);
+    return res.json();
+  } catch (err) {
+    throw _normalizeApiError('Update', err);
+  }
+}
+
+async function _apiHttpError(action, res) {
+  let msg = '';
+  try {
+    const body = await res.json();
+    msg = body && body.error ? String(body.error) : '';
+  } catch (_) {
+    try { msg = (await res.text() || '').trim(); } catch (__) { msg = ''; }
+  }
+  const err = new Error(`${action} failed (${res.status})`);
+  err.status = res.status;
+  err.kind = 'http';
+  err.serverMessage = msg;
+  return err;
+}
+
+function _normalizeApiError(action, err) {
+  if (err && (err.kind === 'http' || err.kind === 'network')) return err;
+  const normalized = new Error(`${action} failed`);
+  const msg = String((err && err.message) || '').toLowerCase();
+  const networkLike = !navigator.onLine || msg.includes('failed to fetch') || msg.includes('networkerror');
+  normalized.kind = networkLike ? 'network' : 'unknown';
+  normalized.cause = err;
+  return normalized;
+}
+
+function _friendlyApiError(actionLabel, err, notFoundMsg) {
+  if (err && err.status === 404 && notFoundMsg) return notFoundMsg;
+  if (err && err.kind === 'network') {
+    return `${actionLabel} failed because your device appears offline. Reconnect and try again.`;
+  }
+  if (!navigator.onLine) {
+    return `${actionLabel} failed because your device appears offline. Reconnect and try again.`;
+  }
+  if (err && err.serverMessage) {
+    return `${actionLabel} failed: ${err.serverMessage}`;
+  }
+  return `${actionLabel} failed. Please try again.`;
 }
 
 // ==================== SYNC / POLLING ====================
@@ -503,7 +555,7 @@ async function createGame() {
     document.getElementById('codeGameCode').textContent = gameCode;
     showScreen('gameCodeScreen');
   } catch (e) {
-    alert('Could not create game. Check your internet connection and try again.');
+    alert(_friendlyApiError('Could not create game', e));
     console.error(e);
   } finally {
     btn.disabled = false; btn.textContent = 'Create Game';
@@ -533,12 +585,8 @@ async function joinGame() {
     showScreen('lobbyScreen');
     startPolling();
   } catch (e) {
-    if (e.message && e.message.includes('404')) {
-      alert('Game not found. Double-check the 6-character code and try again.');
-    } else {
-      alert('Failed to join game. Check your internet connection and try again.');
-      console.error(e);
-    }
+    alert(_friendlyApiError('Failed to join game', e, 'Game not found. Double-check the 6-character code and try again.'));
+    console.error(e);
   } finally {
     btn.disabled = false; btn.textContent = 'Join Game';
   }
@@ -728,7 +776,7 @@ async function submitPhotos() {
     updateAllGrid();
     updateStartButton();
   } catch (e) {
-    alert('Failed to submit photos. Check your connection and try again.');
+    alert(_friendlyApiError('Failed to submit photos', e));
     console.error(e);
   } finally {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Photos'; }
@@ -766,7 +814,7 @@ async function deleteEntry(entryId) {
     updateAllGrid();
     updateStartButton();
   } catch (e) {
-    alert('Failed to delete. Check your connection.');
+    alert(_friendlyApiError('Failed to delete photo', e));
     console.error(e);
   }
 }
@@ -852,7 +900,7 @@ async function startGame() {
     showScreen('gamePlayScreen');
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   } catch (e) {
-    alert('Failed to load game. Check your connection.');
+    alert(_friendlyApiError('Failed to load game', e));
     console.error(e);
   } finally {
     startBtn.disabled = false; startBtn.textContent = 'Start Game';

@@ -151,11 +151,11 @@ Change `20` to your desired limit.
 
 **"Game not found" when joining on the same device/browser**
 - Double-check the 6-character code (case-insensitive, auto-uppercased)
-- Make sure you are using the same browser on the same device — games are stored in that browser's localStorage
-- Refreshing the page is safe; game data persists in localStorage
+- Make sure the host already created the game and shared the current code
+- If the game is older than 24 hours, create a fresh one
 
 **"Game not found" when joining from a different device (iPhone vs MacBook)**
-- This requires a cloud backend. See **Cross-Device Setup (Firebase)** below.
+- This game uses the backend API for shared state. If joins fail across devices, verify backend environment setup below.
 
 **Photos not uploading**
 - Photos are automatically compressed; any image format works
@@ -169,26 +169,21 @@ Change `20` to your desired limit.
 - On the same browser: photos sync automatically via BroadcastChannel
 - On different devices: requires Firebase setup (see below)
 
-## Cross-Device Setup (Firebase)
+## Cross-Device Setup (Firebase Realtime Database)
 
-To allow players on **different devices** (e.g., iPhone + MacBook) to join the same game:
+This project stores game state in `/api/game` using Firebase Realtime Database.
 
 1. **Create a free Firebase project** at https://console.firebase.google.com
-2. Click **Add app → Web**, register your app, copy the config object
-3. Go to **Build → Realtime Database → Create database → Start in test mode**
-4. In `index.html`, find the `FIREBASE_CONFIG = null` line near the bottom of the file and replace it:
-   ```js
-   const FIREBASE_CONFIG = {
-     apiKey: "...",
-     authDomain: "YOUR_PROJECT.firebaseapp.com",
-     databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-     projectId: "YOUR_PROJECT_ID",
-   };
-   ```
-5. Just above the `</body>` tag, uncomment the two Firebase `<script>` lines
-6. Redeploy to Vercel/Netlify — cross-device sync is now enabled!
+2. Go to **Build → Realtime Database → Create database**
+3. Copy your Realtime Database URL, for example:
+   `https://YOUR_PROJECT-default-rtdb.firebaseio.com`
+4. In Vercel project settings, add environment variable:
+   - `FIREBASE_DATABASE_URL=https://YOUR_PROJECT-default-rtdb.firebaseio.com`
+5. If your Firebase rules require auth, also add:
+   - `FIREBASE_DATABASE_SECRET=...`
+6. Redeploy so the serverless function picks up the new variables.
 
-> **Note:** "Test mode" rules allow open read/write for 30 days — sufficient for game sessions. For long-term use, restrict rules to your domain.
+> If `FIREBASE_DATABASE_URL` is missing, the API returns a storage configuration error.
 
 ## Deployment Tips
 
