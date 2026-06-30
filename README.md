@@ -8,7 +8,7 @@ An interactive web-based dating reveal game where friends submit photos, then pl
 ✅ **Photo Submissions** - Upload up to 20 photos per player
 ✅ **Interactive Gameplay** - Guess who submitted each photo
 ✅ **Smart Reveal** - Shows all players who submitted the same person
-✅ **Firebase Backend** - Real-time multiplayer across any device
+✅ **No Backend** - All data stored locally in browser
 ✅ **Mobile Friendly** - Works on phones, tablets, and desktop
 ✅ **Instant** - Deploy in minutes to Vercel
 
@@ -29,61 +29,7 @@ An interactive web-based dating reveal game where friends submit photos, then pl
 - Players guess who it is
 - Answer reveals: **"You + Henri + Csenga"** (all who submitted Jordan)
 
-## Firebase Setup (Required for Multiplayer)
-
-The game uses **Firebase Realtime Database** so players on different devices can join the same game in real time. You must create a free Firebase project and add your config to `index.html` before the game will work.
-
-### Step 1 — Create a Firebase Project
-
-1. Go to [https://console.firebase.google.com](https://console.firebase.google.com)
-2. Click **Add project**, give it a name (e.g. *dating-reveal*), follow the prompts
-3. On the left sidebar click **Build → Realtime Database → Create database**
-4. Choose any location and start in **test mode** (you can tighten rules later)
-
-### Step 2 — Register a Web App
-
-1. In your project's overview page, click the **`</>`** (Web) icon
-2. Give it a nickname and click **Register app**
-3. Copy the `firebaseConfig` object that appears — you'll need it next
-
-### Step 3 — Paste Config into index.html
-
-Open `index.html` and find the `firebaseConfig` block near the top of the `<script>` section. Replace the placeholder values with the ones from your Firebase project:
-
-```javascript
-const firebaseConfig = {
-  apiKey: "AIzaSy...",
-  authDomain: "your-project.firebaseapp.com",
-  databaseURL: "https://your-project-default-rtdb.firebaseio.com",
-  projectId: "your-project",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abc123"
-};
-```
-
-### Step 4 — Set Database Rules
-
-In the Firebase console go to **Realtime Database → Rules** and set:
-
-```json
-{
-  "rules": {
-    ".read": true,
-    ".write": true
-  }
-}
-```
-
-Click **Publish**. This lets any player read/write game data without logging in.
-
-### Step 5 — Deploy
-
-Commit `index.html` with your config and push to GitHub. Vercel will automatically redeploy.
-
----
-
-
+## Quick Start
 
 ### Deploy to Vercel (Recommended - Takes 2 minutes)
 
@@ -158,11 +104,12 @@ Lobby → Start Game → See Image & Guess → Click Name → Reveal Answer → 
 
 ## Technical Details
 
-- **Pure HTML/CSS/JavaScript** - No server needed
-- **Local Storage** - All data stays in browser
-- **No Dependencies** - Just one HTML file
-- **Responsive Design** - Works on all devices
-- **Offline Capable** - Works after first load
+- **Pure HTML/CSS/JavaScript** - No server needed for same-device play
+- **localStorage** - Game data persists across page refreshes in the same browser
+- **BroadcastChannel** - Instant cross-tab sync within the same browser
+- **Firebase (optional)** - Enables real-time cross-device sync
+- **Image compression** - Photos auto-resized to 500px max before storing
+- **No Dependencies** - Just one HTML file (plus optional Firebase SDK)
 
 ## Browser Support
 
@@ -202,27 +149,46 @@ Change `20` to your desired limit.
 
 ## Troubleshooting
 
-**"Game not found" when joining**
-- Make sure you completed the Firebase setup and deployed the updated `index.html`
-- Double-check the 6-character code (it is case-insensitive; the app auto-uppercases it)
-- The game creator must have successfully created the game — check for any error alerts
+**"Game not found" when joining on the same device/browser**
+- Double-check the 6-character code (case-insensitive, auto-uppercased)
+- Make sure you are using the same browser on the same device — games are stored in that browser's localStorage
+- Refreshing the page is safe; game data persists in localStorage
 
-**"Firebase Not Configured" screen on load**
-- You haven't replaced the placeholder values in `firebaseConfig` inside `index.html`
-- Follow the Firebase Setup section above, then redeploy
+**"Game not found" when joining from a different device (iPhone vs MacBook)**
+- This requires a cloud backend. See **Cross-Device Setup (Firebase)** below.
 
 **Photos not uploading**
-- Ensure photos are JPG or PNG format
-- Keep photos under 10MB
-- Try refreshing the page
+- Photos are automatically compressed; any image format works
+- Try refreshing the page if the photo grid doesn't appear
 
 **Game won't start**
 - At least one player must have submitted photos
 - Click "Start Game" button in lobby
 
 **Can't see other players' photos**
-- Photos sync in real time via Firebase — no refresh needed
-- Check the browser console for Firebase permission errors; verify your database rules are set to `true`
+- On the same browser: photos sync automatically via BroadcastChannel
+- On different devices: requires Firebase setup (see below)
+
+## Cross-Device Setup (Firebase)
+
+To allow players on **different devices** (e.g., iPhone + MacBook) to join the same game:
+
+1. **Create a free Firebase project** at https://console.firebase.google.com
+2. Click **Add app → Web**, register your app, copy the config object
+3. Go to **Build → Realtime Database → Create database → Start in test mode**
+4. In `index.html`, find the `FIREBASE_CONFIG = null` line near the bottom of the file and replace it:
+   ```js
+   const FIREBASE_CONFIG = {
+     apiKey: "...",
+     authDomain: "YOUR_PROJECT.firebaseapp.com",
+     databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+     projectId: "YOUR_PROJECT_ID",
+   };
+   ```
+5. Just above the `</body>` tag, uncomment the two Firebase `<script>` lines
+6. Redeploy to Vercel/Netlify — cross-device sync is now enabled!
+
+> **Note:** "Test mode" rules allow open read/write for 30 days — sufficient for game sessions. For long-term use, restrict rules to your domain.
 
 ## Deployment Tips
 
