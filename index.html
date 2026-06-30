@@ -41,7 +41,7 @@
     .code-display .label { font-size: 12px; color: #666; margin-bottom: 8px; }
     .code-display .code { font-family: monospace; font-size: 32px; font-weight: bold; color: #667eea; letter-spacing: 2px; }
     .code-display .copy-btn { margin: 12px 0 0; }
-    .logged-in { background: #d4edda; padding: 12px; border-radius: 6px; margin-bottom: 16px; color: #155724; font-weight: 600; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+    .logged-in { background: #d4edda; padding: 12px; border-radius: 6px; margin-bottom: 16px; color: #155724; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
     .game-header { background: #e7f3ff; border: 1px solid #b3d9ff; color: #004085; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; }
     .game-header .game-title { font-weight: 600; font-size: 16px; margin-bottom: 4px; }
     .game-header .game-code { font-family: monospace; font-size: 14px; color: #667eea; }
@@ -55,19 +55,22 @@
     .photo-item:hover { border-color: #667eea; transform: scale(1.05); }
     .photo-item img { width: 100%; height: 100%; object-fit: cover; }
     .photo-item.selected { border-color: #667eea; box-shadow: inset 0 0 0 2px #667eea; }
-    .photo-item .checkmark { position: absolute; top: 4px; right: 4px; background: #667eea; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+    .photo-item .checkmark { position: absolute; top: 4px; right: 4px; background: #667eea; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; }
     .photo-counter { text-align: center; margin: 12px 0; font-size: 13px; color: #666; }
     .entry-card { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-bottom: 12px; background: white; }
     .entry-card-content { padding: 12px; }
     .entry-card-img { width: 100%; height: 150px; background: linear-gradient(135deg, #667eea, #764ba2); margin-bottom: 12px; border-radius: 6px; overflow: hidden; }
     .entry-card-img img { width: 100%; height: 100%; object-fit: cover; }
+    .entry-card-name { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 8px; }
     .entry-card-actions { display: flex; gap: 6px; }
     .entry-card-actions button { padding: 8px 12px; font-size: 12px; margin: 0; width: auto; flex: 1; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px; margin-top: 16px; }
     .grid-card { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
     .grid-card-img { width: 100%; height: 110px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; }
     .grid-card-img img { width: 100%; height: 100%; object-fit: cover; }
-    .grid-card-name { padding: 8px; font-size: 11px; text-align: center; border-top: 1px solid #ddd; line-height: 1.3; }
+    .grid-card-info { padding: 8px; font-size: 11px; text-align: center; border-top: 1px solid #ddd; line-height: 1.3; }
+    .grid-card-person { font-weight: 600; color: #333; margin-bottom: 2px; }
+    .grid-card-by { color: #999; }
     .empty { text-align: center; color: #999; padding: 40px; }
     .success { background: #d4edda; color: #155724; padding: 12px; border-radius: 6px; margin-bottom: 16px; display: none; font-size: 13px; animation: slideIn 0.3s ease; }
     .success.show { display: block; }
@@ -97,6 +100,16 @@
     .reveal-answer { font-size: 18px; font-weight: bold; color: #667eea; }
     .controls-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px; }
     .controls-bottom button { margin: 0; padding: 10px; font-size: 12px; }
+
+    /* MODAL STYLES */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; }
+    .modal-overlay.show { display: flex; align-items: center; justify-content: center; }
+    .modal { background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    .modal h2 { margin-bottom: 16px; color: #333; }
+    .modal-close { float: right; background: #f0f0f0; color: #333; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .modal-name-input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .modal-actions button { margin: 0; padding: 10px; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -198,7 +211,7 @@
     <!-- SUBMIT TAB -->
     <div id="submit-photos" class="tab active">
       <div class="info-box">
-        Upload up to 20 photos. Click photos to select/deselect, then submit.
+        Upload photos and name the person in each photo. Up to 20 photos per player.
       </div>
 
       <div class="success" id="successMsg">✓ Photos submitted!</div>
@@ -261,6 +274,18 @@
     </div>
 
     <button class="back-btn" onclick="endGame()" style="margin-top: 20px;">Exit Game</button>
+  </div>
+</div>
+
+<!-- NAME INPUT MODAL -->
+<div id="nameModal" class="modal-overlay">
+  <div class="modal">
+    <h2>Who is this person?</h2>
+    <input type="text" id="personName" class="modal-name-input" placeholder="Enter their name" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="cancelNameInput()" style="margin: 0;">Cancel</button>
+      <button onclick="confirmNameInput()" style="margin: 0;">Confirm</button>
+    </div>
   </div>
 </div>
 
@@ -436,6 +461,7 @@ function updateStartButton() {
 
 // PHOTO SUBMISSION
 let selectedPhotos = [];
+let currentPhotoForName = null;
 
 function handlePhotoSelection() {
   const files = document.getElementById('photoInput').files;
@@ -452,6 +478,7 @@ function handlePhotoSelection() {
       div.innerHTML = `<img src="${e.target.result}" alt="Photo ${idx + 1}"><div class="checkmark">✓</div>`;
       div.onclick = () => togglePhotoSelection(div);
       div.dataset.data = e.target.result;
+      div.dataset.name = ''; // Will be filled in by modal
       container.appendChild(div);
 
       updatePhotoCounter();
@@ -473,8 +500,6 @@ function updatePhotoCounter() {
 }
 
 function submitPhotos() {
-  const gameId = localStorage.getItem('currentGameId');
-  const playerName = localStorage.getItem('currentPlayer');
   const selected = document.querySelectorAll('.photo-item.selected');
 
   if (selected.length === 0) {
@@ -482,12 +507,28 @@ function submitPhotos() {
     return;
   }
 
+  // Check if all selected photos have names
+  let allNamed = true;
+  selected.forEach((item) => {
+    if (!item.dataset.name || item.dataset.name.trim() === '') {
+      allNamed = false;
+    }
+  });
+
+  if (!allNamed) {
+    alert('Please enter a name for each photo');
+    return;
+  }
+
+  const gameId = localStorage.getItem('currentGameId');
+  const playerName = localStorage.getItem('currentPlayer');
   const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
 
   selected.forEach((item) => {
     entries.push({
       id: Date.now() + Math.random(),
       submittedBy: playerName,
+      personName: item.dataset.name.trim(),
       photo: item.dataset.data
     });
   });
@@ -523,6 +564,7 @@ function updateMySubmissions() {
     <div class="entry-card">
       <div class="entry-card-content">
         <div class="entry-card-img"><img src="${e.photo}" alt="Photo"></div>
+        <div class="entry-card-name">${e.personName}</div>
         <div class="entry-card-actions">
           <button class="btn-danger" onclick="deleteEntry('${e.id}')">Delete</button>
         </div>
@@ -557,10 +599,57 @@ function updateAllGrid() {
   grid.innerHTML = entries.map(e => `
     <div class="grid-card">
       <div class="grid-card-img"><img src="${e.photo}" alt="Photo"></div>
-      <div class="grid-card-name">by ${e.submittedBy}</div>
+      <div class="grid-card-info">
+        <div class="grid-card-person">${e.personName}</div>
+        <div class="grid-card-by">by ${e.submittedBy}</div>
+      </div>
     </div>
   `).join('');
 }
+
+// MODAL FUNCTIONS
+function openNameModal(photoElement) {
+  currentPhotoForName = photoElement;
+  document.getElementById('personName').value = photoElement.dataset.name || '';
+  document.getElementById('nameModal').classList.add('show');
+  document.getElementById('personName').focus();
+}
+
+function confirmNameInput() {
+  if (currentPhotoForName) {
+    const name = document.getElementById('personName').value.trim();
+    if (!name) {
+      alert('Please enter a name');
+      return;
+    }
+    currentPhotoForName.dataset.name = name;
+    closeNameModal();
+  }
+}
+
+function cancelNameInput() {
+  closeNameModal();
+}
+
+function closeNameModal() {
+  document.getElementById('nameModal').classList.remove('show');
+  currentPhotoForName = null;
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', (e) => {
+  const modal = document.getElementById('nameModal');
+  if (e.target === modal) {
+    closeNameModal();
+  }
+});
+
+// Allow Enter key to confirm
+document.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter' && document.getElementById('nameModal').classList.contains('show')) {
+    confirmNameInput();
+  }
+});
 
 // GAME PLAY
 let currentPhotoIndex = 0;
@@ -617,31 +706,23 @@ function selectGuess(name) {
 function revealAnswer() {
   const photo = gamePhotos[currentPhotoIndex];
   const gameId = localStorage.getItem('currentGameId');
-  const participants = JSON.parse(localStorage.getItem(gameId + '_participants') || '[]');
-
-  // Find all people who submitted photos with this name
-  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
-  const allPhotosByName = entries.filter(e => e.submittedBy === photo.submittedBy);
-  const whoSubmittedThis = photo.submittedBy;
-
-  // Find all participants who submitted ANY photo with this submitter's name
-  // Group by submitter name to find all who submitted this person
-  const allSubmittersOfThisPerson = entries
-    .filter(e => entries.some(entry => entry.submittedBy === e.submittedBy && entry.submittedBy === whoSubmittedThis))
-    .map(e => e.submittedBy);
   
-  // Get unique submitters
-  const uniqueSubmitters = [...new Set(allSubmittersOfThisPerson)];
+  // Find all entries with the same person name
+  const entries = JSON.parse(localStorage.getItem(gameId + '_entries') || '[]');
+  const allEntriesOfThisPerson = entries.filter(e => e.personName === photo.personName);
+  
+  // Get unique submitters who submitted photos of this person
+  const submitters = [...new Set(allEntriesOfThisPerson.map(e => e.submittedBy))];
 
   const revealSection = document.getElementById('revealedSection');
   const revealAnswer = document.getElementById('revealAnswer');
   
-  revealAnswer.textContent = uniqueSubmitters.length > 1 ? uniqueSubmitters.join(' + ') : whoSubmittedThis;
+  revealAnswer.textContent = submitters.length > 1 ? submitters.join(' + ') : submitters[0];
   revealSection.style.display = 'block';
 
   document.getElementById('guessBtn').style.display = 'none';
   document.getElementById('nextBtn').style.display = 'block';
-  document.getElementById('gameName').textContent = whoSubmittedThis;
+  document.getElementById('gameName').textContent = photo.personName;
 }
 
 function nextPhoto() {
@@ -667,6 +748,13 @@ if (gameId) {
   loadLobbyScreen();
   showScreen('lobbyScreen');
 }
+
+// Override photo grid click to open name modal
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.photo-item')) {
+    openNameModal(e.target.closest('.photo-item'));
+  }
+});
 </script>
 
 </body>
