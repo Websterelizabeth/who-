@@ -214,7 +214,7 @@
     <!-- SUBMIT TAB -->
     <div id="submit-photos" class="tab active">
       <div class="info-box">
-        Upload photos and enter the person's FULL NAME (First & Last). Up to 20 photos per player.
+        Upload photos and enter the person's name (at least one name part). Up to 20 photos per player.
       </div>
 
       <div class="success" id="successMsg">✓ Photos submitted!</div>
@@ -284,7 +284,7 @@
 <div id="nameModal" class="modal-overlay">
   <div class="modal">
     <h2>Who is this person?</h2>
-    <p style="font-size: 12px; color: #666; margin-bottom: 16px;">Enter their FULL NAME (first and last name)</p>
+    <p style="font-size: 12px; color: #666; margin-bottom: 16px;">Enter at least one name part (first or last)</p>
     <div class="modal-inputs">
       <div>
         <label>First Name</label>
@@ -733,11 +733,13 @@ async function submitPhotos() {
   const selected = document.querySelectorAll('.photo-item.selected');
   if (selected.length === 0) { alert('Select at least one photo'); return; }
 
-  const unnamed = Array.from(selected).some(
-    item => !item.dataset.firstName.trim() || !item.dataset.lastName.trim()
-  );
+  const unnamed = Array.from(selected).some(item => {
+    const firstName = (item.dataset.firstName || '').trim();
+    const lastName = (item.dataset.lastName || '').trim();
+    return !firstName && !lastName;
+  });
   if (unnamed) {
-    alert('Please click each photo and enter a full name (first and last) before submitting.');
+    alert('Please click each photo and enter at least one name before submitting.');
     return;
   }
 
@@ -748,11 +750,13 @@ async function submitPhotos() {
     const entries = {};
     selected.forEach(item => {
       const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const firstName = (item.dataset.firstName || '').trim();
+      const lastName = (item.dataset.lastName || '').trim();
       entries[id] = {
         id,
-        firstName: item.dataset.firstName.trim(),
-        lastName: item.dataset.lastName.trim(),
-        fullName: item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim(),
+        firstName,
+        lastName,
+        fullName: [firstName, lastName].filter(Boolean).join(' '),
         photo: item.dataset.data,
         submittedBy: currentPlayerName,
       };
@@ -850,7 +854,7 @@ function confirmNameInput() {
   if (!currentPhotoForName) return;
   const firstName = document.getElementById('firstName').value.trim();
   const lastName = document.getElementById('lastName').value.trim();
-  if (!firstName || !lastName) { alert('Please enter both first and last name'); return; }
+  if (!firstName && !lastName) { alert('Please enter at least one name'); return; }
   currentPhotoForName.dataset.firstName = firstName;
   currentPhotoForName.dataset.lastName = lastName;
   closeNameModal();
