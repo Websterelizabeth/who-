@@ -107,7 +107,8 @@ Lobby → Start Game → See Image & Guess → Click Name → Reveal Answer → 
 - **Pure HTML/CSS/JavaScript** - No server needed for same-device play
 - **localStorage** - Game data persists across page refreshes in the same browser
 - **BroadcastChannel** - Instant cross-tab sync within the same browser
-- **Firebase (optional)** - Enables real-time cross-device sync
+- **Firebase SSE** - Direct real-time stream from Firebase Realtime Database for instant cross-device updates
+- **Polling fallback** - Falls back to 3-second REST polling if Firebase SSE is unavailable
 - **Image compression** - Photos auto-resized to 500px max before storing
 - **No Dependencies** - Just one HTML file (plus optional Firebase SDK)
 

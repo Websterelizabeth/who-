@@ -313,6 +313,8 @@ let currentGameCode = null;
 let currentPlayerName = null;
 let pollInterval = null;
 let _lastKnownVersion = 0;
+let _firebaseStream = null;   // EventSource for Firebase SSE
+let _firebaseDbUrl = null;    // loaded from /api/config at startup
 
 // ==================== LOCAL CACHE ====================
 (function loadCache() {
@@ -427,6 +429,20 @@ function _friendlyApiError(actionLabel, err, notFoundMsg) {
   return `${actionLabel} failed. Please try again.`;
 }
 
+// ==================== FIREBASE CONFIG ====================
+
+(async function loadFirebaseConfig() {
+  try {
+    const res = await fetch('/api/config');
+    if (res.ok) {
+      const cfg = await res.json();
+      _firebaseDbUrl = cfg.databaseUrl || null;
+    }
+  } catch (e) {
+    _firebaseDbUrl = null;
+  }
+})();
+
 // ==================== SYNC / POLLING ====================
 
 function _refreshLobby() {
@@ -468,6 +484,74 @@ function startPolling() {
   if (pollInterval) clearInterval(pollInterval);
   _pollForUpdates();                                         // immediate first poll
   pollInterval = setInterval(_pollForUpdates, 3000);
+}
+
+// ==================== FIREBASE REALTIME STREAM ====================
+// Uses Firebase Realtime Database's REST SSE endpoint so the lobby
+// updates instantly when any player joins or submits photos, without
+// waiting for the 3-second polling interval.
+
+function _stopFirebaseStream() {
+  if (_firebaseStream) {
+    _firebaseStream.close();
+    _firebaseStream = null;
+  }
+}
+
+function startRealtimeSync(code) {
+  _stopFirebaseStream();
+
+  if (!_firebaseDbUrl) {
+    // Firebase URL not available — fall back to polling
+    startPolling();
+    return;
+  }
+
+  try {
+    const sseUrl = `${_firebaseDbUrl}/games/${encodeURIComponent(code)}.json`;
+    _firebaseStream = new EventSource(sseUrl);
+
+    _firebaseStream.addEventListener('put', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload && payload.data && currentGameCode) {
+          const incoming = payload.data;
+          // Firebase may send the full game object or a subtree; only
+          // replace our local copy when we receive the game root (path "/")
+          if (payload.path === '/' && incoming && typeof incoming === 'object') {
+            gameData[currentGameCode] = incoming;
+            _lastKnownVersion = incoming.version || _lastKnownVersion;
+            _saveCache();
+            _broadcastGame(currentGameCode);
+            _refreshLobby();
+          }
+        }
+      } catch (err) {
+        console.warn('SSE put parse error:', err);
+      }
+    });
+
+    _firebaseStream.addEventListener('patch', (e) => {
+      // A patch means partial update — fetch the full game to stay consistent
+      _pollForUpdates();
+    });
+
+    _firebaseStream.onerror = () => {
+      console.warn('Firebase SSE error; falling back to polling');
+      _stopFirebaseStream();
+      startPolling();
+    };
+
+    // Also do an immediate fetch to populate state right away
+    _pollForUpdates();
+
+    // Keep a slow heartbeat poll as a safety net in case SSE misses events
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(_pollForUpdates, 15000);
+  } catch (e) {
+    console.warn('Could not open Firebase stream:', e.message);
+    startPolling();
+  }
 }
 
 // ==================== IMAGE COMPRESSION ====================
@@ -516,6 +600,7 @@ function showTab(e, name) {
 function goToWelcome() {
   showScreen('welcomeScreen');
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  _stopFirebaseStream();
 }
 
 function goToCreateGame() {
@@ -583,7 +668,7 @@ async function joinGame() {
 
     loadLobbyScreen();
     showScreen('lobbyScreen');
-    startPolling();
+    startRealtimeSync(gameCode);
   } catch (e) {
     alert(_friendlyApiError('Failed to join game', e, 'Game not found. Double-check the 6-character code and try again.'));
     console.error(e);
@@ -596,12 +681,13 @@ function startGameAfterCreate() {
   _lastKnownVersion = (gameData[currentGameCode] || {}).version || 0;
   loadLobbyScreen();
   showScreen('lobbyScreen');
-  startPolling();
+  startRealtimeSync(currentGameCode);
 }
 
 function exitGame() {
   if (confirm('Exit game?')) {
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    _stopFirebaseStream();
     currentGameCode = null;
     currentPlayerName = null;
     goToWelcome();
@@ -899,6 +985,7 @@ async function startGame() {
     loadPhotoRound();
     showScreen('gamePlayScreen');
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    _stopFirebaseStream();
   } catch (e) {
     alert(_friendlyApiError('Failed to load game', e));
     console.error(e);
@@ -944,6 +1031,7 @@ function nextPhoto() { currentPhotoIndex++; loadPhotoRound(); }
 function endGame() {
   if (confirm('End game?')) {
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    _stopFirebaseStream();
     currentGameCode = null;
     currentPlayerName = null;
     goToWelcome();
