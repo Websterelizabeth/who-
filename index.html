@@ -745,24 +745,38 @@ async function submitPhotos() {
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Uploading…'; }
 
   try {
-    const entries = {};
-    selected.forEach(item => {
-      const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      entries[id] = {
-        id,
-        firstName: item.dataset.firstName.trim(),
-        lastName: item.dataset.lastName.trim(),
-        fullName: item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim(),
-        photo: item.dataset.data,
-        submittedBy: currentPlayerName,
-      };
-    });
+    const selectedItems = Array.from(selected);
+    const total = selectedItems.length;
+    const batchSize = 3;
+    let updated = null;
 
-    const updated = await _apiPatch(currentGameCode, { entries });
-    gameData[currentGameCode] = updated;
-    _saveCache();
-    _broadcastGame(currentGameCode);
-    _lastKnownVersion = updated.version;
+    for (let i = 0; i < selectedItems.length; i += batchSize) {
+      const batch = selectedItems.slice(i, i + batchSize);
+      const entries = {};
+
+      batch.forEach(item => {
+        const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        entries[id] = {
+          id,
+          firstName: item.dataset.firstName.trim(),
+          lastName: item.dataset.lastName.trim(),
+          fullName: item.dataset.firstName.trim() + ' ' + item.dataset.lastName.trim(),
+          photo: item.dataset.data,
+          submittedBy: currentPlayerName,
+        };
+      });
+
+      if (submitBtn) {
+        const done = Math.min(i + batch.length, total);
+        submitBtn.textContent = `Uploading ${done}/${total}…`;
+      }
+
+      updated = await _apiPatch(currentGameCode, { entries });
+      gameData[currentGameCode] = updated;
+      _saveCache();
+      _broadcastGame(currentGameCode);
+      _lastKnownVersion = updated.version;
+    }
 
     document.getElementById('photoInput').value = '';
     document.getElementById('photoGrid').innerHTML = '';
