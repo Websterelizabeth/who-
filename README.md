@@ -8,7 +8,7 @@ An interactive web-based dating reveal game where friends submit photos, then pl
 ✅ **Photo Submissions** - Upload up to 20 photos per player
 ✅ **Interactive Gameplay** - Guess who submitted each photo
 ✅ **Smart Reveal** - Shows all players who submitted the same person
-✅ **No Backend** - All data stored locally in browser
+✅ **Cross-Device Play** - Firebase Realtime Database keeps all players in sync
 ✅ **Mobile Friendly** - Works on phones, tablets, and desktop
 ✅ **Instant** - Deploy in minutes to Vercel
 
@@ -53,7 +53,20 @@ An interactive web-based dating reveal game where friends submit photos, then pl
    - Click "Deploy"
    - Get instant live URL!
 
-4. **Share the URL** with your friends
+4. **Add Firebase (Required for game creation)**
+
+   Game state is stored in Firebase Realtime Database. Without this step players **cannot create or join games**.
+
+   - Go to [console.firebase.google.com](https://console.firebase.google.com) and create a free project.
+   - Under **Build → Realtime Database**, click **Create database** (start in test mode).
+   - Copy your database URL (e.g. `https://YOUR_PROJECT-default-rtdb.firebaseio.com`).
+   - In your Vercel project dashboard go to **Settings → Environment Variables** and add:
+     ```
+     FIREBASE_DATABASE_URL = https://YOUR_PROJECT-default-rtdb.firebaseio.com
+     ```
+   - Click **Redeploy** so the serverless function picks up the new variable.
+
+5. **Share the URL** with your friends
 
 ### Or Deploy to Netlify
 
@@ -104,12 +117,12 @@ Lobby → Start Game → See Image & Guess → Click Name → Reveal Answer → 
 
 ## Technical Details
 
-- **Pure HTML/CSS/JavaScript** - No server needed for same-device play
-- **localStorage** - Game data persists across page refreshes in the same browser
+- **Pure HTML/CSS/JavaScript** - No external library dependencies
+- **Firebase Realtime Database** - Required for cross-device game state
+- **localStorage** - Game data cached locally for fast page loads
 - **BroadcastChannel** - Instant cross-tab sync within the same browser
-- **Firebase (optional)** - Enables real-time cross-device sync
 - **Image compression** - Photos auto-resized to 500px max before storing
-- **No Dependencies** - Just one HTML file (plus optional Firebase SDK)
+- **No Dependencies** - Just one HTML file plus the `/api/game` serverless function
 
 ## Browser Support
 
@@ -120,10 +133,10 @@ Lobby → Start Game → See Image & Guess → Click Name → Reveal Answer → 
 
 ## Privacy
 
-- All data stored **locally** in browser
-- Nothing sent to any server
-- No analytics or tracking
-- Completely anonymous gameplay
+- Game state stored in Firebase Realtime Database (required for cross-device play)
+- Photos are stored as base64 data within the game record
+- Nothing sent to any third-party analytics or tracking service
+- Completely anonymous gameplay — no accounts required
 
 ## Customization
 
@@ -165,25 +178,29 @@ Change `20` to your desired limit.
 - At least one player must have submitted photos
 - Click "Start Game" button in lobby
 
+**Can't create a game / "Game storage is not configured" error**
+- Firebase Realtime Database is **required**. Follow the Firebase Setup steps in the Quick Start above.
+- Make sure `FIREBASE_DATABASE_URL` is set in Vercel → Settings → Environment Variables and that you redeployed after adding it.
+
 **Can't see other players' photos**
 - On the same browser: photos sync automatically via BroadcastChannel
-- On different devices: requires Firebase setup (see below)
+- On different devices: verify the Firebase environment variable is set (see Quick Start step 4)
 
-## Cross-Device Setup (Firebase Realtime Database)
+## Firebase Setup Details
 
-This project stores game state in `/api/game` using Firebase Realtime Database.
+`FIREBASE_DATABASE_URL` is **required** for the game to work. The `/api/game` serverless function stores all game state (participants, photos, codes) in Firebase Realtime Database.
 
 1. **Create a free Firebase project** at https://console.firebase.google.com
-2. Go to **Build → Realtime Database → Create database**
+2. Go to **Build → Realtime Database → Create database** (choose test mode rules to allow reads/writes)
 3. Copy your Realtime Database URL, for example:
    `https://YOUR_PROJECT-default-rtdb.firebaseio.com`
 4. In Vercel project settings, add environment variable:
    - `FIREBASE_DATABASE_URL=https://YOUR_PROJECT-default-rtdb.firebaseio.com`
-5. If your Firebase rules require auth, also add:
-   - `FIREBASE_DATABASE_SECRET=...`
+5. If your Firebase rules require authentication, also add:
+   - `FIREBASE_DATABASE_SECRET=<your-database-secret>`
 6. Redeploy so the serverless function picks up the new variables.
 
-> If `FIREBASE_DATABASE_URL` is missing, the API returns a storage configuration error.
+> Without `FIREBASE_DATABASE_URL`, every attempt to create or join a game will fail with a storage configuration error.
 
 ## Deployment Tips
 

@@ -8,7 +8,7 @@
 ✅ `.gitignore` - Git ignore rules
 ✅ `GITHUB_TO_VERCEL.md` - Detailed guide
 
-## 3-Step Deployment
+## 4-Step Deployment
 
 ### Step 1: GitHub (2 minutes)
 
@@ -30,7 +30,21 @@
 6. Click "Deploy"
 7. Wait 1-2 minutes
 
-### Step 3: Share (30 seconds)
+### Step 3: Firebase — Required for game creation (2 minutes)
+
+Game state is stored in Firebase Realtime Database. **Without this step the app cannot create or join games.**
+
+1. Go to **console.firebase.google.com** → create a free project
+2. Click **Build → Realtime Database → Create database** (choose "Start in test mode")
+3. Copy the database URL shown (e.g. `https://YOUR_PROJECT-default-rtdb.firebaseio.com`)
+4. In Vercel: go to your project → **Settings → Environment Variables** → add:
+   ```
+   Name:  FIREBASE_DATABASE_URL
+   Value: https://YOUR_PROJECT-default-rtdb.firebaseio.com
+   ```
+5. Click **Save**, then go to **Deployments → Redeploy**
+
+### Step 4: Share (30 seconds)
 
 Copy your Vercel URL and send to friends:
 ```

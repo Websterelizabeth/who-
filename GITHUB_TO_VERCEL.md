@@ -81,7 +81,42 @@ https://dating-reveal-game-[random].vercel.app
 
 Copy this URL - this is your game link!
 
-## Step 4: Share with Friends
+## Step 4: Add Firebase (Required for game creation)
+
+Game state is stored in Firebase Realtime Database. **Without this step, players cannot create or join games.**
+
+### 4a. Create a Firebase project
+
+1. Go to [console.firebase.google.com](https://console.firebase.google.com)
+2. Click **"Add project"** and give it any name
+3. Disable Google Analytics (optional) and click **"Create project"**
+
+### 4b. Enable Realtime Database
+
+1. In the left sidebar click **Build → Realtime Database**
+2. Click **"Create database"**
+3. Select any region and click **"Next"**
+4. Choose **"Start in test mode"** and click **"Enable"**
+5. Copy the database URL shown at the top (e.g. `https://YOUR_PROJECT-default-rtdb.firebaseio.com`)
+
+### 4c. Add the environment variable to Vercel
+
+1. Go to your project on **vercel.com**
+2. Click **Settings → Environment Variables**
+3. Add a new variable:
+   - **Name**: `FIREBASE_DATABASE_URL`
+   - **Value**: your database URL from step 4b
+4. Click **Save**
+
+### 4d. Redeploy
+
+1. Go to **Deployments** in your Vercel project
+2. Click the three-dot menu on the latest deployment → **Redeploy**
+3. Wait ~1 minute
+
+Your game is now fully functional!
+
+## Step 5: Share with Friends
 
 Send your game URL to friends:
 ```
@@ -90,7 +125,7 @@ https://dating-reveal-game-[random].vercel.app
 
 They can visit it immediately and start playing!
 
-## Step 5: Update Your Game (Optional)
+## Step 6: Update Your Game (Optional)
 
 If you make changes and want to deploy them:
 
@@ -105,6 +140,11 @@ git push origin main
 Vercel automatically redeploys within 1-2 minutes. Your friends can refresh the page to see updates.
 
 ## Troubleshooting
+
+### "Game storage is not configured" / can't create a game
+- You need to complete **Step 4** (Firebase setup). Without `FIREBASE_DATABASE_URL` the game backend is disabled.
+- Check Vercel → Settings → Environment Variables and confirm `FIREBASE_DATABASE_URL` is present.
+- After adding the variable you **must redeploy** for it to take effect.
 
 ### "Repository not found" when deploying
 - Make sure repository is **Public**, not Private

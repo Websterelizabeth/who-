@@ -55,7 +55,10 @@ function storageError(res, err) {
 
 function ensureStorage(res) {
   if (isStorageConfigured()) return true;
-  res.status(500).json({ error: 'Server storage is not configured.' });
+  res.status(500).json({
+    error:
+      'Game storage is not configured. Add the FIREBASE_DATABASE_URL environment variable in your Vercel project settings and redeploy. See the README for setup instructions.',
+  });
   return false;
 }
 
